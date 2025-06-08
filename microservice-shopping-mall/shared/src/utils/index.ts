@@ -1,73 +1,106 @@
 // shared/src/utils/index.ts
 
-import * as jwt from "jsonwebtoken";
+import jwt from "jsonwebtoken";
 import { v4 as uuidv4 } from "uuid";
 import { User, TokenPair, JwtPayload } from "../types";
 
 // ========================================
 // JWT 토큰 관련 유틸리티
 // ========================================
+
+// JWT 만료 시간을 초 단위로 변환하는 헬퍼 함수
+const parseExpirationTime = (timeStr: string): number => {
+  const unit = timeStr.slice(-1);
+  const value = parseInt(timeStr.slice(0, -1), 10);
+
+  switch (unit) {
+    case "s":
+      return value; // 초
+    case "m":
+      return value * 60; // 분
+    case "h":
+      return value * 60 * 60; // 시간
+    case "d":
+      return value * 24 * 60 * 60; // 일
+    default:
+      return parseInt(timeStr, 10) || 900; // 기본 15분 (900초)
+  }
+};
+
 export const generateTokenPair = (user: User): TokenPair => {
   const payload: JwtPayload = {
     userId: user.id,
     email: user.email,
     role: user.role,
+    jti: uuidv4(), // JWT ID 추가로 고유성 보장
   };
 
-  const accessToken = jwt.sign(
-    payload,
-    process.env.JWT_SECRET || "dev-secret",
-    { expiresIn: process.env.JWT_EXPIRES_IN || "15m" }
+  // JWT 시크릿 확인
+  const jwtSecret = getEnvVar("JWT_SECRET");
+  const refreshSecret = getEnvVar("JWT_REFRESH_SECRET");
+
+  // 만료 시간을 초 단위로 변환
+  const accessTokenExpiresIn = parseExpirationTime(
+    getEnvVar("JWT_EXPIRES_IN", "15m")
+  );
+  const refreshTokenExpiresIn = parseExpirationTime(
+    getEnvVar("JWT_REFRESH_EXPIRES_IN", "7d")
   );
 
-  const refreshToken = jwt.sign(
-    { userId: user.id },
-    process.env.JWT_REFRESH_SECRET || "dev-refresh-secret",
-    { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || "7d" }
-  );
+  try {
+    const accessToken = jwt.sign(payload, jwtSecret, {
+      expiresIn: accessTokenExpiresIn,
+    });
 
-  return { accessToken, refreshToken };
+    const refreshToken = jwt.sign(
+      { userId: user.id, jti: uuidv4() }, // 리프레시 토큰에도 고유 ID 추가
+      refreshSecret,
+      { expiresIn: refreshTokenExpiresIn }
+    );
+
+    return { accessToken, refreshToken };
+  } catch (error) {
+    throw new Error(
+      "Token generation failed: " +
+        (error instanceof Error ? error.message : "Unknown error")
+    );
+  }
 };
 
 export const verifyAccessToken = (token: string): JwtPayload => {
-  return jwt.verify(
-    token,
-    process.env.JWT_SECRET || "dev-secret"
-  ) as JwtPayload;
+  try {
+    const decoded = jwt.verify(token, getEnvVar("JWT_SECRET")) as JwtPayload;
+    return decoded;
+  } catch (error) {
+    throw new Error("Invalid or expired access token");
+  }
 };
 
 export const verifyRefreshToken = (token: string): { userId: string } => {
-  return jwt.verify(
-    token,
-    process.env.JWT_REFRESH_SECRET || "dev-refresh-secret"
-  ) as { userId: string };
+  try {
+    const decoded = jwt.verify(token, getEnvVar("JWT_REFRESH_SECRET")) as {
+      userId: string;
+    };
+    return decoded;
+  } catch (error) {
+    throw new Error("Invalid or expired refresh token");
+  }
 };
 
 // ========================================
-// 유니크 ID 생성
+// ID 생성 유틸리티
 // ========================================
-export const generateRequestId = (): string => {
-  return uuidv4();
-};
 
-export const generateUserId = (): string => {
-  return `user_${uuidv4()}`;
-};
-
-export const generateProductId = (): string => {
-  return `product_${uuidv4()}`;
-};
-
-export const generateOrderId = (): string => {
-  return `order_${uuidv4()}`;
-};
+export const generateRequestId = (): string => uuidv4();
+export const generateUserId = (): string => uuidv4();
+export const generateProductId = (): string => uuidv4();
+export const generateOrderId = (): string => uuidv4();
 
 // ========================================
-// 시간 유틸리티
+// 날짜/시간 유틸리티
 // ========================================
-export const getCurrentTimestamp = (): string => {
-  return new Date().toISOString();
-};
+
+export const getCurrentTimestamp = (): string => new Date().toISOString();
 
 export const addDays = (date: Date, days: number): Date => {
   const result = new Date(date);
@@ -84,25 +117,23 @@ export const addHours = (date: Date, hours: number): Date => {
 // ========================================
 // 문자열 유틸리티
 // ========================================
+
 export const slugify = (text: string): string => {
   return text
-    .toString()
     .toLowerCase()
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/[^\w\-]+/g, "")
-    .replace(/\-\-+/g, "-")
-    .replace(/^-+/, "")
-    .replace(/-+$/, "");
+    .replace(/[^\w ]+/g, "")
+    .replace(/ +/g, "-");
 };
 
 export const truncate = (text: string, length: number): string => {
-  if (text.length <= length) return text;
-  return text.substring(0, length).trim() + "...";
+  return text.length > length ? text.substring(0, length) + "..." : text;
 };
 
-export const formatCurrency = (amount: number, currency = "KRW"): string => {
-  return new Intl.NumberFormat("ko-KR", {
+export const formatCurrency = (
+  amount: number,
+  currency: string = "USD"
+): string => {
+  return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency,
   }).format(amount);
@@ -111,32 +142,36 @@ export const formatCurrency = (amount: number, currency = "KRW"): string => {
 // ========================================
 // 유효성 검사 유틸리티
 // ========================================
+
 export const isValidEmail = (email: string): boolean => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return emailRegex.test(email);
 };
 
 export const isValidPassword = (password: string): boolean => {
-  // 최소 8자, 대문자, 소문자, 숫자 포함
-  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d@$!%*?&]{8,}$/;
+  // 최소 8자, 대문자, 소문자, 숫자, 특수문자 포함
+  const passwordRegex =
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
   return passwordRegex.test(password);
 };
 
 export const isValidPhoneNumber = (phone: string): boolean => {
-  const phoneRegex = /^01[0-9]-?\d{3,4}-?\d{4}$/;
+  const phoneRegex = /^\+?[\d\s\-\(\)]{10,}$/;
   return phoneRegex.test(phone);
 };
 
 // ========================================
-// 배열 유틸리티
+// 배열/객체 유틸리티
 // ========================================
+
 export const paginate = <T>(
   items: T[],
   page: number,
   limit: number
 ): { data: T[]; total: number; totalPages: number } => {
-  const offset = (page - 1) * limit;
-  const data = items.slice(offset, offset + limit);
+  const startIndex = (page - 1) * limit;
+  const endIndex = startIndex + limit;
+  const data = items.slice(startIndex, endIndex);
   const total = items.length;
   const totalPages = Math.ceil(total / limit);
 
@@ -155,6 +190,7 @@ export const shuffleArray = <T>(array: T[]): T[] => {
 // ========================================
 // 로깅 유틸리티
 // ========================================
+
 export interface Logger {
   info: (message: string, meta?: any) => void;
   warn: (message: string, meta?: any) => void;
@@ -164,7 +200,7 @@ export interface Logger {
 
 export const createLogger = (serviceName: string): Logger => {
   const log = (level: string, message: string, meta?: any) => {
-    const timestamp = getCurrentTimestamp();
+    const timestamp = new Date().toISOString();
     const logEntry = {
       timestamp,
       level,
@@ -173,53 +209,56 @@ export const createLogger = (serviceName: string): Logger => {
       ...(meta && { meta }),
     };
 
-    if (process.env.NODE_ENV === "development") {
-      console.log(JSON.stringify(logEntry, null, 2));
-    } else {
+    // 환경에 따른 로그 출력 방식 결정
+    if (process.env.NODE_ENV === "production") {
+      // 프로덕션 환경에서는 JSON 형태로 출력
       console.log(JSON.stringify(logEntry));
+    } else {
+      // 개발 환경에서는 읽기 쉬운 형태로 출력
+      const metaStr = meta ? ` ${JSON.stringify(meta)}` : "";
+      console.log(
+        `[${timestamp}] ${level.toUpperCase()} [${serviceName}] ${message}${metaStr}`
+      );
     }
   };
 
   return {
-    info: (message: string, meta?: any) => log("INFO", message, meta),
-    warn: (message: string, meta?: any) => log("WARN", message, meta),
-    error: (message: string, meta?: any) => log("ERROR", message, meta),
+    info: (message: string, meta?: any) => log("info", message, meta),
+    warn: (message: string, meta?: any) => log("warn", message, meta),
+    error: (message: string, meta?: any) => log("error", message, meta),
     debug: (message: string, meta?: any) => {
       if (process.env.NODE_ENV === "development") {
-        log("DEBUG", message, meta);
+        log("debug", message, meta);
       }
     },
   };
 };
 
 // ========================================
-// 암호화 유틸리티
+// 보안 유틸리티
 // ========================================
+
 export const maskEmail = (email: string): string => {
   const [username, domain] = email.split("@");
-  if (username.length <= 2) return email;
-
-  const maskedUsername =
-    username[0] +
-    "*".repeat(username.length - 2) +
-    username[username.length - 1];
+  const maskedUsername = username.slice(0, 2) + "*".repeat(username.length - 2);
   return `${maskedUsername}@${domain}`;
 };
 
 export const maskPhoneNumber = (phone: string): string => {
   const cleaned = phone.replace(/\D/g, "");
-  if (cleaned.length !== 11) return phone;
-
-  return `${cleaned.substring(0, 3)}-****-${cleaned.substring(7)}`;
+  const masked =
+    cleaned.slice(0, 3) + "*".repeat(cleaned.length - 6) + cleaned.slice(-3);
+  return masked;
 };
 
 // ========================================
-// 환경 설정 유틸리티
+// 환경 변수 유틸리티
 // ========================================
+
 export const getEnvVar = (key: string, defaultValue?: string): string => {
   const value = process.env[key];
   if (!value && !defaultValue) {
-    throw new Error(`환경 변수 ${key}가 설정되지 않았습니다.`);
+    throw new Error(`Environment variable ${key} is required`);
   }
   return value || defaultValue!;
 };
@@ -227,15 +266,20 @@ export const getEnvVar = (key: string, defaultValue?: string): string => {
 export const getEnvNumber = (key: string, defaultValue?: number): number => {
   const value = process.env[key];
   if (!value && defaultValue === undefined) {
-    throw new Error(`환경 변수 ${key}가 설정되지 않았습니다.`);
+    throw new Error(`Environment variable ${key} is required`);
   }
-  return value ? parseInt(value, 10) : defaultValue!;
+  const numberValue = value ? parseInt(value, 10) : defaultValue!;
+  if (isNaN(numberValue)) {
+    throw new Error(`Environment variable ${key} must be a valid number`);
+  }
+  return numberValue;
 };
 
 export const getEnvBoolean = (key: string, defaultValue?: boolean): boolean => {
   const value = process.env[key];
   if (!value && defaultValue === undefined) {
-    throw new Error(`환경 변수 ${key}가 설정되지 않았습니다.`);
+    throw new Error(`Environment variable ${key} is required`);
   }
-  return value ? value.toLowerCase() === "true" : defaultValue!;
+  if (!value) return defaultValue!;
+  return value.toLowerCase() === "true" || value === "1";
 };

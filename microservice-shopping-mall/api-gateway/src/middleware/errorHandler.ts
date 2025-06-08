@@ -1,185 +1,80 @@
-import { Request, Response, NextFunction } from "express";
-import { ValidationError } from "express-validator";
-import {
-  ApiResponse,
-  HTTP_STATUS,
-  ErrorCode,
-  createLogger,
-  getCurrentTimestamp,
-} from "@shopping-mall/shared";
+// api-gateway/src/middleware/errorhandler.ts
 
-const logger = createLogger("api-gateway");
+import { Request, Response, NextFunction } from 'express';
+import { ValidationError } from 'express-validator';
+import { createLogger } from '@shopping-mall/shared';
+
+// Logger 인스턴스 생성
+const logger = createLogger('api-gateway');
 
 // ========================================
 // 커스텀 에러 클래스들
 // ========================================
-export class AppError extends Error {
-  public readonly statusCode: number;
-  public readonly errorCode: ErrorCode;
-  public readonly isOperational: boolean;
 
-  constructor(
-    message: string,
-    statusCode: number = HTTP_STATUS.INTERNAL_SERVER_ERROR,
-    errorCode: ErrorCode = ErrorCode.INTERNAL_ERROR,
-    isOperational: boolean = true
-  ) {
+export class AppError extends Error {
+  public statusCode: number;
+  public isOperational: boolean;
+  public code?: string;
+
+  constructor(message: string, statusCode: number, code?: string) {
     super(message);
     this.statusCode = statusCode;
-    this.errorCode = errorCode;
-    this.isOperational = isOperational;
+    this.isOperational = true;
+    this.code = code;
 
     Error.captureStackTrace(this, this.constructor);
   }
 }
 
 export class ValidationAppError extends AppError {
-  public readonly validationErrors: ValidationError[];
+  public validationErrors: ValidationError[];
 
   constructor(message: string, validationErrors: ValidationError[]) {
-    super(message, HTTP_STATUS.BAD_REQUEST, ErrorCode.VALIDATION_ERROR);
+    super(message, 400, 'VALIDATION_ERROR');
+    this.name = 'ValidationAppError';
     this.validationErrors = validationErrors;
   }
 }
 
 export class AuthenticationError extends AppError {
-  constructor(message: string = "인증이 필요합니다") {
-    super(message, HTTP_STATUS.UNAUTHORIZED, ErrorCode.AUTHENTICATION_ERROR);
+  constructor(message: string = 'Authentication failed') {
+    super(message, 401, 'AUTHENTICATION_ERROR');
+    this.name = 'AuthenticationError';
   }
 }
 
 export class AuthorizationError extends AppError {
-  constructor(message: string = "권한이 없습니다") {
-    super(message, HTTP_STATUS.FORBIDDEN, ErrorCode.AUTHORIZATION_ERROR);
+  constructor(message: string = 'Access denied') {
+    super(message, 403, 'AUTHORIZATION_ERROR');
+    this.name = 'AuthorizationError';
   }
 }
 
 export class NotFoundError extends AppError {
-  constructor(message: string = "리소스를 찾을 수 없습니다") {
-    super(message, HTTP_STATUS.NOT_FOUND, ErrorCode.NOT_FOUND_ERROR);
+  constructor(message: string = 'Resource not found') {
+    super(message, 404, 'NOT_FOUND_ERROR');
+    this.name = 'NotFoundError';
   }
 }
 
 export class ConflictError extends AppError {
-  constructor(message: string = "리소스 충돌이 발생했습니다") {
-    super(message, HTTP_STATUS.CONFLICT, ErrorCode.CONFLICT_ERROR);
+  constructor(message: string = 'Resource conflict') {
+    super(message, 409, 'CONFLICT_ERROR');
+    this.name = 'ConflictError';
+  }
+}
+
+export class InternalServerError extends AppError {
+  constructor(message: string = 'Internal server error') {
+    super(message, 500, 'INTERNAL_ERROR');
+    this.name = 'InternalServerError';
   }
 }
 
 // ========================================
-// 에러 핸들러 미들웨어
+// 유효성 검사 에러 생성 헬퍼 함수
 // ========================================
-export const errorHandler = (
-  error: Error,
-  req: any,
-  res: Response,
-  next: NextFunction
-): void => {
-  let statusCode = HTTP_STATUS.INTERNAL_SERVER_ERROR;
-  let errorCode = ErrorCode.INTERNAL_ERROR;
-  let message = "내부 서버 오류가 발생했습니다";
-  let details: any = undefined;
 
-  // AppError 인스턴스인 경우
-  if (error instanceof AppError) {
-    statusCode = error.statusCode;
-    errorCode = error.errorCode;
-    message = error.message;
-
-    // ValidationAppError인 경우 유효성 검사 세부사항 추가
-    if (error instanceof ValidationAppError) {
-      details = {
-        validationErrors: error.validationErrors.map((err) => ({
-          field: err.type === "field" ? err.path : undefined,
-          message: err.msg,
-          value: err.type === "field" ? err.value : undefined,
-        })),
-      };
-    }
-  }
-  // JWT 관련 에러
-  else if (error.name === "JsonWebTokenError") {
-    statusCode = HTTP_STATUS.UNAUTHORIZED;
-    errorCode = ErrorCode.AUTHENTICATION_ERROR;
-    message = "유효하지 않은 토큰입니다";
-  } else if (error.name === "TokenExpiredError") {
-    statusCode = HTTP_STATUS.UNAUTHORIZED;
-    errorCode = ErrorCode.AUTHENTICATION_ERROR;
-    message = "토큰이 만료되었습니다";
-  }
-  // Syntax Error (잘못된 JSON 등)
-  else if (error instanceof SyntaxError && "body" in error) {
-    statusCode = HTTP_STATUS.BAD_REQUEST;
-    errorCode = ErrorCode.VALIDATION_ERROR;
-    message = "잘못된 요청 형식입니다";
-  }
-  // 기타 알려진 에러들
-  else if (error.name === "CastError") {
-    statusCode = HTTP_STATUS.BAD_REQUEST;
-    errorCode = ErrorCode.VALIDATION_ERROR;
-    message = "잘못된 데이터 형식입니다";
-  }
-
-  // 로깅
-  const logData = {
-    error: {
-      name: error.name,
-      message: error.message,
-      stack: error.stack,
-    },
-    request: {
-      id: req.id,
-      method: req.method,
-      url: req.originalUrl,
-      ip: req.ip,
-      userAgent: req.get("User-Agent"),
-    },
-    statusCode,
-    errorCode,
-  };
-
-  if (statusCode >= 500) {
-    logger.error("Server Error:", logData);
-  } else {
-    logger.warn("Client Error:", logData);
-  }
-
-  // 응답 생성
-  const response: ApiResponse = {
-    success: false,
-    data: null,
-    error: message,
-    timestamp: getCurrentTimestamp(),
-    requestId: req.id || "unknown",
-  };
-
-  // 개발 환경에서는 추가 정보 제공
-  if (process.env.NODE_ENV === "development") {
-    response.error = message;
-    if (details) {
-      (response as any).details = details;
-    }
-    // 스택 트레이스는 500 에러에서만 제공
-    if (statusCode >= 500) {
-      (response as any).stack = error.stack;
-    }
-  }
-
-  res.status(statusCode).json(response);
-};
-
-// ========================================
-// 비동기 에러 핸들러 래퍼
-// ========================================
-export const asyncHandler = (fn: Function) => {
-  return (req: Request, res: Response, next: NextFunction) => {
-    Promise.resolve(fn(req, res, next)).catch(next);
-  };
-};
-
-// ========================================
-// 유효성 검사 에러 생성 헬퍼
-// ========================================
 export const createValidationError = (
   message: string,
   validationErrors: ValidationError[]
@@ -188,33 +83,190 @@ export const createValidationError = (
 };
 
 // ========================================
-// 404 에러 핸들러
+// 에러 응답 형식 정의
 // ========================================
-export const notFoundHandler = (
-  req: any,
+
+interface ErrorResponse {
+  success: false;
+  error: string;
+  message: string;
+  code?: string;
+  statusCode: number;
+  timestamp: string;
+  requestId: string;
+  stack?: string;
+  details?: any;
+}
+
+// ========================================
+// 에러 핸들러 미들웨어
+// ========================================
+
+export const errorHandler = (
+  error: Error,
+  req: Request,
   res: Response,
   next: NextFunction
 ): void => {
-  const error = new NotFoundError(
-    `경로를 찾을 수 없습니다: ${req.method} ${req.originalUrl}`
-  );
-  next(error);
+  let statusCode = 500;
+  let message = 'Internal Server Error';
+  let code = 'INTERNAL_ERROR';
+  let details: any = undefined;
+
+  // AppError 인스턴스인 경우
+  if (error instanceof AppError) {
+    statusCode = error.statusCode;
+    message = error.message;
+    code = error.code || 'UNKNOWN_ERROR';
+
+    // ValidationAppError인 경우 유효성 검사 세부사항 추가
+    if (error instanceof ValidationAppError) {
+      details = {
+        validationErrors: error.validationErrors.map(err => ({
+          field: err.type === 'field' ? err.path : undefined,
+          message: err.msg,
+          value: err.type === 'field' ? err.value : undefined,
+        })),
+      };
+    }
+  }
+  // JWT 에러 처리
+  else if (error.name === 'JsonWebTokenError') {
+    statusCode = 401;
+    message = 'Invalid token';
+    code = 'INVALID_TOKEN';
+  } else if (error.name === 'TokenExpiredError') {
+    statusCode = 401;
+    message = 'Token expired';
+    code = 'TOKEN_EXPIRED';
+  }
+  // Validation 에러 처리
+  else if (error.name === 'ValidationError') {
+    statusCode = 400;
+    message = error.message;
+    code = 'VALIDATION_ERROR';
+  }
+  // MongoDB 에러 처리
+  else if (error.name === 'CastError') {
+    statusCode = 400;
+    message = 'Invalid ID format';
+    code = 'INVALID_ID';
+  }
+  // Express-validator 에러 처리
+  else if (error.name === 'ValidatorError') {
+    statusCode = 400;
+    message = error.message;
+    code = 'VALIDATION_ERROR';
+  }
+
+  // 에러 로깅
+  const errorInfo = {
+    message: error.message,
+    stack: error.stack,
+    statusCode,
+    method: req.method,
+    url: req.url,
+    userAgent: req.get('User-Agent'),
+    ip: req.ip,
+    requestId: req.headers['x-request-id'] || 'unknown',
+  };
+
+  if (statusCode >= 500) {
+    logger.error('Server Error', errorInfo);
+  } else {
+    logger.warn('Client Error', errorInfo);
+  }
+
+  // 에러 응답 생성
+  const errorResponse: ErrorResponse = {
+    success: false,
+    error: message, // 에러 클래스명 대신 사용자 친화적 메시지 사용
+    message,
+    code,
+    statusCode,
+    timestamp: new Date().toISOString(),
+    requestId: (req.headers['x-request-id'] as string) || 'unknown',
+  };
+
+  // 유효성 검사 에러 세부사항 추가
+  if (details) {
+    errorResponse.details = details;
+  }
+
+  // 개발 환경에서만 스택 트레이스 포함
+  if (process.env.NODE_ENV === 'development') {
+    errorResponse.stack = error.stack;
+  }
+
+  res.status(statusCode).json(errorResponse);
 };
 
 // ========================================
-// 프로세스 종료 이벤트 핸들러
+// 404 에러 핸들러
 // ========================================
-export const handleProcessExit = () => {
-  process.on(
-    "unhandledRejection",
-    (reason: unknown, promise: Promise<unknown>) => {
-      logger.error("Unhandled Rejection at:", promise, "reason:", reason);
-      process.exit(1);
-    }
-  );
 
-  process.on("uncaughtException", (error: Error) => {
-    logger.error("Uncaught Exception thrown:", error);
+export const notFoundHandler = (req: Request, res: Response): void => {
+  const error = new NotFoundError(`Route ${req.originalUrl} not found`);
+
+  logger.warn('Route not found', {
+    method: req.method,
+    url: req.originalUrl,
+    ip: req.ip,
+    userAgent: req.get('User-Agent'),
+  });
+
+  const errorResponse: ErrorResponse = {
+    success: false,
+    error: error.message, // "Route xxx not found" 메시지 사용
+    message: error.message,
+    code: error.code,
+    statusCode: error.statusCode,
+    timestamp: new Date().toISOString(),
+    requestId: (req.headers['x-request-id'] as string) || 'unknown',
+  };
+
+  res.status(error.statusCode).json(errorResponse);
+};
+
+// ========================================
+// 비동기 함수 에러 캐처
+// ========================================
+
+export const asyncHandler = (fn: Function) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+};
+
+// ========================================
+// 프로세스 종료 핸들러
+// ========================================
+
+export const handleProcessExit = () => {
+  // Graceful shutdown을 위한 프로세스 종료 핸들러
+  const gracefulShutdown = (signal: string) => {
+    logger.info(`Received ${signal}. Starting graceful shutdown...`);
+
+    // 서버 종료 로직
+    process.exit(0);
+  };
+
+  // 시그널 핸들러 등록
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+  // 처리되지 않은 예외 핸들러
+  process.on('uncaughtException', (error: Error) => {
+    logger.error('Uncaught Exception', {
+      error: error.message,
+      stack: error.stack,
+    });
+    process.exit(1);
+  });
+
+  // 처리되지 않은 Promise 거부 핸들러
+  process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
+    logger.error('Unhandled Rejection', { reason, promise });
     process.exit(1);
   });
 };
