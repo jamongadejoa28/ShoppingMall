@@ -1,0 +1,168 @@
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  Index,
+} from 'typeorm';
+
+/**
+ * UserEntity - TypeORM Entity (Framework 계층)
+ *
+ * 역할: 데이터베이스 테이블과 객체 매핑
+ * 특징: 도메인 로직 없음, 순수 데이터 구조
+ */
+@Entity('users')
+@Index(['email'], { unique: true }) // 이메일 고유 인덱스
+export class UserEntity {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Column({ type: 'varchar', length: 100, nullable: false })
+  name!: string;
+
+  @Column({
+    type: 'varchar',
+    length: 255,
+    nullable: false,
+    unique: true,
+    transformer: {
+      to: (value: string) => value.toLowerCase(), // DB 저장 시 소문자 변환
+      from: (value: string) => value.toLowerCase(), // DB 조회 시 소문자 변환
+    },
+  })
+  email!: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: false })
+  password!: string;
+
+  @Column({
+    type: process.env.NODE_ENV === 'test' ? 'varchar' : 'enum',
+    default: 'customer',
+    // 조건부 속성 스프레드 (실무 Best Practice)
+    ...(process.env.NODE_ENV === 'test'
+      ? { length: 20 }
+      : { enum: ['customer', 'admin'] }),
+  })
+  role!: 'customer' | 'admin';
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  phone?: string | undefined;
+
+  @Column({ type: 'text', nullable: true })
+  address?: string | undefined;
+
+  @Column({ type: 'boolean', default: false })
+  isEmailVerified!: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  emailVerifiedAt?: Date | undefined;
+
+  @Column({ type: 'boolean', default: true })
+  isActive!: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  deactivatedAt?: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  lastLoginAt?: Date | undefined;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  refreshToken?: string | undefined;
+
+  @CreateDateColumn({ type: 'timestamp' })
+  createdAt!: Date;
+
+  @UpdateDateColumn({ type: 'timestamp' })
+  updatedAt!: Date;
+
+  // ===== 생성자 =====
+  constructor() {
+    // TypeORM Entity는 빈 생성자 필요
+  }
+
+  // ===== 정적 팩토리 메서드 =====
+  static fromDomain(user: import('../../entities/User').User): UserEntity {
+    const entity = new UserEntity();
+
+    // 필수 속성들
+    if (user.id) entity.id = user.id;
+    entity.name = user.name;
+    entity.email = user.email;
+    entity.password = user.password;
+    entity.role = user.role;
+    entity.isEmailVerified = user.isEmailVerified;
+    entity.isActive = user.isActive;
+    entity.createdAt = user.createdAt;
+    entity.updatedAt = user.updatedAt;
+
+    // Optional 속성들 - 조건부 할당으로 타입 안전성 확보
+    if (user.phone !== undefined) {
+      entity.phone = user.phone;
+    }
+
+    if (user.address !== undefined) {
+      entity.address = user.address;
+    }
+
+    if (user.emailVerifiedAt !== undefined) {
+      entity.emailVerifiedAt = user.emailVerifiedAt;
+    }
+
+    // deactivatedAt은 null 가능하므로 별도 처리
+    if (user.deactivatedAt !== undefined) {
+      entity.deactivatedAt = user.deactivatedAt;
+    }
+
+    if (user.lastLoginAt !== undefined) {
+      entity.lastLoginAt = user.lastLoginAt;
+    }
+
+    if (user.refreshToken !== undefined) {
+      entity.refreshToken = user.refreshToken;
+    }
+
+    return entity;
+  }
+
+  // ===== 도메인 객체로 변환 =====
+  toDomain(): import('../../entities/User').User {
+    // 동적 import를 사용하여 순환 종속성 완전 방지
+    const { User } = require('../../entities/User');
+
+    // User 생성자에 필요한 최소 데이터만 전달 (조건부 포함)
+    const userData: any = {
+      name: this.name,
+      email: this.email,
+      password: this.password,
+      role: this.role,
+    };
+
+    // phone이 있을 때만 포함
+    if (this.phone) {
+      userData.phone = this.phone;
+    }
+
+    // User 인스턴스 생성
+    const user = new User(userData);
+
+    // DB에서 가져온 추가 정보 설정 (조건부 할당)
+    if (this.id) user.id = this.id;
+    if (this.address) user.address = this.address;
+
+    user.isEmailVerified = this.isEmailVerified;
+    if (this.emailVerifiedAt) user.emailVerifiedAt = this.emailVerifiedAt;
+
+    user.isActive = this.isActive;
+    if (this.deactivatedAt !== undefined)
+      user.deactivatedAt = this.deactivatedAt;
+    if (this.lastLoginAt) user.lastLoginAt = this.lastLoginAt;
+    if (this.refreshToken) user.refreshToken = this.refreshToken;
+
+    user.createdAt = this.createdAt;
+    user.updatedAt = this.updatedAt;
+
+    return user;
+  }
+}
