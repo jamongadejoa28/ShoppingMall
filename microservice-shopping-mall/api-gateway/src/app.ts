@@ -46,8 +46,7 @@ app.use(
     },
     crossOriginEmbedderPolicy: false,
     frameguard: { action: 'deny' },
-    contentTypeOptions: { noSniff: true },
-    xssFilter: { mode: 'block' },
+    xContentTypeOptions: true,
   })
 );
 

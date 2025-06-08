@@ -1,10 +1,21 @@
+// api-gateway/jest.config.js
+
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>/src'],
   testMatch: ['**/__tests__/**/*.ts', '**/?(*.)+(spec|test).ts'],
   transform: {
-    '^.+\\.ts$': 'ts-jest',
+    '^.+\\.ts$': [
+      'ts-jest',
+      {
+        // ts-jest 설정을 여기에 직접 정의 (deprecated globals 방식 대신)
+        useESM: false,
+        tsconfig: {
+          types: ['node', 'jest', '@types/jest'],
+        },
+      },
+    ],
   },
   collectCoverageFrom: [
     'src/**/*.ts',
@@ -38,17 +49,8 @@ module.exports = {
   clearMocks: true,
   restoreMocks: true,
   resetMocks: true,
-  // Jest globals 설정
-  globals: {
-    'ts-jest': {
-      useESM: false,
-      tsconfig: {
-        types: ['node', 'jest', '@types/jest'],
-      },
-    },
-  },
-  // Jest 환경 변수
   testEnvironmentOptions: {
     NODE_ENV: 'test',
   },
+  reporters: ['default'],
 };

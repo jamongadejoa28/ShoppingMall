@@ -202,11 +202,14 @@ export const errorHandler = (
 };
 
 // ========================================
-// 404 에러 핸들러
+// 404 에러 핸들러 (한국어 메시지로 수정)
 // ========================================
 
 export const notFoundHandler = (req: Request, res: Response): void => {
-  const error = new NotFoundError(`Route ${req.originalUrl} not found`);
+  // 한국어 메시지로 변경
+  const error = new NotFoundError(
+    `경로를 찾을 수 없습니다: ${req.originalUrl}`
+  );
 
   logger.warn('Route not found', {
     method: req.method,
@@ -217,7 +220,7 @@ export const notFoundHandler = (req: Request, res: Response): void => {
 
   const errorResponse: ErrorResponse = {
     success: false,
-    error: error.message, // "Route xxx not found" 메시지 사용
+    error: error.message,
     message: error.message,
     code: error.code,
     statusCode: error.statusCode,
