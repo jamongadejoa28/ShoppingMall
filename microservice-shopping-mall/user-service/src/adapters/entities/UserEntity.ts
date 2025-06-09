@@ -56,25 +56,38 @@ export class UserEntity {
   @Column({ type: 'boolean', default: false })
   isEmailVerified!: boolean;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({
+    type: process.env.NODE_ENV === 'test' ? 'datetime' : 'timestamp',
+    nullable: true,
+  })
   emailVerifiedAt?: Date | undefined;
 
   @Column({ type: 'boolean', default: true })
   isActive!: boolean;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({
+    type: process.env.NODE_ENV === 'test' ? 'datetime' : 'timestamp',
+    nullable: true,
+  })
   deactivatedAt?: Date | null;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({
+    type: process.env.NODE_ENV === 'test' ? 'datetime' : 'timestamp',
+    nullable: true,
+  })
   lastLoginAt?: Date | undefined;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   refreshToken?: string | undefined;
 
-  @CreateDateColumn({ type: 'timestamp' })
+  @CreateDateColumn({
+    type: process.env.NODE_ENV === 'test' ? 'datetime' : 'timestamp',
+  })
   createdAt!: Date;
 
-  @UpdateDateColumn({ type: 'timestamp' })
+  @UpdateDateColumn({
+    type: process.env.NODE_ENV === 'test' ? 'datetime' : 'timestamp',
+  })
   updatedAt!: Date;
 
   // ===== 생성자 =====
@@ -131,35 +144,24 @@ export class UserEntity {
     // 동적 import를 사용하여 순환 종속성 완전 방지
     const { User } = require('../../entities/User');
 
-    // User 생성자에 필요한 최소 데이터만 전달 (조건부 포함)
-    const userData: any = {
-      name: this.name,
-      email: this.email,
-      password: this.password,
-      role: this.role,
-    };
+    // Repository에서는 이미 저장된 데이터를 복원하므로 생성자를 사용하지 않음
+    // (생성자 사용 시 비밀번호가 재해시화되는 문제 방지)
+    const user = Object.create(User.prototype);
 
-    // phone이 있을 때만 포함
-    if (this.phone) {
-      userData.phone = this.phone;
-    }
-
-    // User 인스턴스 생성
-    const user = new User(userData);
-
-    // DB에서 가져온 추가 정보 설정 (조건부 할당)
-    if (this.id) user.id = this.id;
-    if (this.address) user.address = this.address;
-
+    // DB에서 가져온 데이터를 직접 할당 (재검증/재해시화 없이)
+    user.id = this.id;
+    user.name = this.name;
+    user.email = this.email;
+    user.password = this.password; // 이미 해시된 비밀번호 그대로 유지
+    user.role = this.role;
+    user.phone = this.phone;
+    user.address = this.address;
     user.isEmailVerified = this.isEmailVerified;
-    if (this.emailVerifiedAt) user.emailVerifiedAt = this.emailVerifiedAt;
-
+    user.emailVerifiedAt = this.emailVerifiedAt;
     user.isActive = this.isActive;
-    if (this.deactivatedAt !== undefined)
-      user.deactivatedAt = this.deactivatedAt;
-    if (this.lastLoginAt) user.lastLoginAt = this.lastLoginAt;
-    if (this.refreshToken) user.refreshToken = this.refreshToken;
-
+    user.deactivatedAt = this.deactivatedAt;
+    user.lastLoginAt = this.lastLoginAt;
+    user.refreshToken = this.refreshToken;
     user.createdAt = this.createdAt;
     user.updatedAt = this.updatedAt;
 
