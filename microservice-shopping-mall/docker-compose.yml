@@ -1,0 +1,68 @@
+version: "3.8"
+
+services:
+  # User Service
+  user-service:
+    build:
+      context: ./user-service # user-service 폴더를 컨텍스트로 지정
+      dockerfile: Dockerfile # 해당 폴더 내의 Dockerfile 사용
+    container_name: user-service
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=production
+      - DB_HOST=postgres
+      - DB_USER=postgres
+      - DB_PASSWORD=rlarkdmf
+      - DB_NAME=shopping_mall_users
+      - JWT_SECRET=your-super-secret-jwt-key-for-user-service
+      - JWT_REFRESH_SECRET=your-super-secret-refresh-key-for-user-service
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - user-service-network
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: user-service-postgres
+    environment:
+      POSTGRES_DB: shopping_mall_users
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: rlarkdmf # .env와 동일하게
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - user-service-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: user-service-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - user-service-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  user-service-network:
+    driver: bridge
