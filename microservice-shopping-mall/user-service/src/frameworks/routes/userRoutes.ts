@@ -1,6 +1,6 @@
 // ========================================
-// User Routes - Framework 계층
-// src/framework/routes/userRoutes.ts
+// User Routes - Framework 계층 (완전 수정됨)
+// src/frameworks/routes/userRoutes.ts
 // ========================================
 
 import { Router, Request, Response, NextFunction } from 'express';
@@ -15,248 +15,22 @@ import {
 import { asyncErrorCatcher } from '../middleware/errorMiddleware';
 
 /**
- * User Routes - 사용자 관련 API 엔드포인트
- *
- * 역할:
- * - RESTful API 엔드포인트 정의
- * - Controller와 Middleware 연결
- * - 라우트별 인증/검증 규칙 적용
- *
- * API 설계 원칙:
- * - RESTful 규칙 준수
- * - 일관된 응답 형식
- * - 적절한 HTTP 상태 코드
- * - 보안 최우선 고려
- */
-
-/**
  * 사용자 라우터 생성 함수
- *
- * 의존성 주입을 통해 Controller와 TokenService를 받아서
- * 완전한 라우터를 구성하여 반환
  */
 export function createUserRoutes(
   userController: UserController,
-  tokenService: any // TokenService 타입 (순환 참조 방지)
+  tokenService: any
 ): Router {
   const router = Router();
 
   // ========================================
-  // 공개 API (인증 불필요)
-  // ========================================
-
-  /**
-   * 회원가입
-   * POST /api/users/register
-   *
-   * Body: { name, email, password, role? }
-   * Response: { success, message, data: { user, emailSent, emailError? } }
-   */
-  router.post(
-    '/register',
-    validateUserRegistration(),
-    handleValidationErrors(),
-    asyncErrorCatcher(userController.register)
-  );
-
-  /**
-   * 로그인
-   * POST /api/users/login
-   *
-   * Body: { email, password }
-   * Response: { success, message, data: { user, accessToken, refreshToken, expiresIn } }
-   */
-  router.post(
-    '/login',
-    validateUserLogin(),
-    handleValidationErrors(),
-    asyncErrorCatcher(userController.login)
-  );
-
-  // ========================================
-  // 보호된 API (인증 필요)
-  // ========================================
-
-  /**
-   * 내 프로필 조회
-   * GET /api/users/profile
-   *
-   * Headers: Authorization: Bearer <token>
-   * Response: { success, message, data: { user } }
-   */
-  router.get(
-    '/profile',
-    requireAuth(tokenService),
-    asyncErrorCatcher(userController.getProfile)
-  );
-
-  /**
-   * 내 프로필 수정
-   * PUT /api/users/profile
-   *
-   * Headers: Authorization: Bearer <token>
-   * Body: { name?, phone?, address? }
-   * Response: { success, message, data: { user } }
-   */
-  router.put(
-    '/profile',
-    requireAuth(tokenService),
-    validateUserProfileUpdate(),
-    handleValidationErrors(),
-    asyncErrorCatcher(userController.updateProfile)
-  );
-
-  /**
-   * 회원 탈퇴 (계정 비활성화)
-   * DELETE /api/users/profile
-   *
-   * Headers: Authorization: Bearer <token>
-   * Response: { success, message, data: { message, deactivatedAt, user } }
-   */
-  router.delete(
-    '/profile',
-    requireAuth(tokenService),
-    asyncErrorCatcher(userController.deactivateAccount)
-  );
-
-  // ========================================
-  // 관리자 또는 본인만 접근 가능한 API
-  // ========================================
-
-  /**
-   * 특정 사용자 프로필 조회
-   * GET /api/users/:userId
-   *
-   * Headers: Authorization: Bearer <token>
-   * Params: { userId: string (UUID) }
-   * Response: { success, message, data: { user } }
-   *
-   * 권한: 자기 자신 또는 관리자
-   */
-  router.get(
-    '/:userId',
-    requireAuth(tokenService),
-    requireSelfOrAdmin(),
-    asyncErrorCatcher(async (req, res, next) => {
-      // UserController.getProfile을 재사용하되 userId 파라미터 활용
-      const userId = req.params.userId;
-      if (!userId) {
-        res.status(400).json({
-          success: false,
-          message: '사용자 ID가 필요합니다',
-          error: 'USER_ID_REQUIRED',
-          data: null,
-        });
-        return;
-      }
-
-      // 임시로 user ID 변경 (타입 안전성 확보)
-      const originalUserId = req.user!.id;
-      req.user!.id = userId;
-
-      try {
-        await userController.getProfile(req, res, next);
-      } finally {
-        // 원본 user ID 복원
-        req.user!.id = originalUserId;
-      }
-    })
-  );
-
-  /**
-   * 특정 사용자 프로필 수정
-   * PUT /api/users/:userId
-   *
-   * Headers: Authorization: Bearer <token>
-   * Params: { userId: string (UUID) }
-   * Body: { name?, phone?, address? }
-   * Response: { success, message, data: { user } }
-   *
-   * 권한: 자기 자신 또는 관리자
-   */
-  router.put(
-    '/:userId',
-    requireAuth(tokenService),
-    requireSelfOrAdmin(),
-    validateUserProfileUpdate(),
-    handleValidationErrors(),
-    asyncErrorCatcher(
-      async (req: Request, res: Response, next: NextFunction) => {
-        // UserController.updateProfile을 재사용하되 userId 파라미터 활용
-        const userId = req.params.userId;
-        if (!userId) {
-          res.status(400).json({
-            success: false,
-            message: '사용자 ID가 필요합니다',
-            error: 'USER_ID_REQUIRED',
-            data: null,
-          });
-          return;
-        }
-
-        // 임시로 user ID 변경 (타입 안전성 확보)
-        const originalUserId = req.user!.id;
-        req.user!.id = userId;
-
-        try {
-          await userController.updateProfile(req, res, next);
-        } finally {
-          // 원본 user ID 복원
-          req.user!.id = originalUserId;
-        }
-      }
-    )
-  );
-
-  /**
-   * 특정 사용자 계정 비활성화
-   * DELETE /api/users/:userId
-   *
-   * Headers: Authorization: Bearer <token>
-   * Params: { userId: string (UUID) }
-   * Response: { success, message, data: { message, deactivatedAt, user } }
-   *
-   * 권한: 자기 자신 또는 관리자
-   */
-  router.delete(
-    '/:userId',
-    requireAuth(tokenService),
-    requireSelfOrAdmin(),
-    asyncErrorCatcher(async (req, res, next) => {
-      // UserController.deactivateAccount를 재사용하되 userId 파라미터 활용
-      const userId = req.params.userId;
-      if (!userId) {
-        res.status(400).json({
-          success: false,
-          message: '사용자 ID가 필요합니다',
-          error: 'USER_ID_REQUIRED',
-          data: null,
-        });
-        return;
-      }
-
-      // 임시로 user ID 변경 (타입 안전성 확보)
-      const originalUserId = req.user!.id;
-      req.user!.id = userId;
-
-      try {
-        await userController.deactivateAccount(req, res, next);
-      } finally {
-        // 원본 user ID 복원
-        req.user!.id = originalUserId;
-      }
-    })
-  );
-
-  // ========================================
-  // 헬스 체크 및 정보 API
+  // 🔧 수정: 헬스 체크 및 정보 API를 최상단으로 이동
+  // (인증 미들웨어 적용 전에 배치)
   // ========================================
 
   /**
    * 사용자 서비스 헬스 체크
    * GET /api/users/health
-   *
-   * Response: { success, message, data: { status, timestamp, version } }
    */
   router.get(
     '/health',
@@ -278,8 +52,6 @@ export function createUserRoutes(
   /**
    * 사용자 서비스 정보
    * GET /api/users/info
-   *
-   * Response: { success, message, data: { name, version, description } }
    */
   router.get(
     '/info',
@@ -306,6 +78,256 @@ export function createUserRoutes(
         },
       });
     })
+  );
+
+  // ========================================
+  // 공개 API (인증 불필요)
+  // ========================================
+
+  /**
+   * 회원가입
+   * POST /api/users/register
+   */
+  router.post(
+    '/register',
+    validateUserRegistration(),
+    handleValidationErrors(),
+    asyncErrorCatcher(userController.register)
+  );
+
+  /**
+   * 로그인
+   * POST /api/users/login
+   */
+  router.post(
+    '/login',
+    validateUserLogin(),
+    handleValidationErrors(),
+    asyncErrorCatcher(userController.login)
+  );
+
+  /**
+   * 토큰 갱신 (Refresh Token)
+   * POST /api/users/refresh
+   */
+  router.post(
+    '/refresh',
+    asyncErrorCatcher(async (req: Request, res: Response) => {
+      try {
+        const { refreshToken } = req.body;
+
+        if (!refreshToken) {
+          res.status(400).json({
+            success: false,
+            message: 'Refresh Token이 필요합니다',
+            error: 'REFRESH_TOKEN_REQUIRED',
+            data: null,
+          });
+          return;
+        }
+
+        // Refresh Token 검증
+        const refreshPayload = tokenService.verifyRefreshToken(refreshToken);
+
+        if (!refreshPayload) {
+          res.status(401).json({
+            success: false,
+            message: '유효하지 않거나 만료된 Refresh Token입니다',
+            error: 'INVALID_REFRESH_TOKEN',
+            data: null,
+          });
+          return;
+        }
+
+        // 사용자 정보로 새 토큰 쌍 생성
+        const newTokens = {
+          accessToken: tokenService.generateAccessToken({
+            id: refreshPayload.id,
+            email: refreshPayload.email,
+            role: 'customer', // 실제로는 DB에서 조회해야 함
+          }),
+          refreshToken: tokenService.generateRefreshToken({
+            id: refreshPayload.id,
+            email: refreshPayload.email,
+          }),
+          expiresIn: tokenService.getTokenExpirationTime(),
+        };
+
+        res.status(200).json({
+          success: true,
+          message: '토큰이 성공적으로 갱신되었습니다',
+          data: newTokens,
+        });
+      } catch (error) {
+        console.error('[Refresh Token] 오류:', error);
+        res.status(500).json({
+          success: false,
+          message: '토큰 갱신 중 오류가 발생했습니다',
+          error: 'TOKEN_REFRESH_ERROR',
+          data: null,
+        });
+      }
+    })
+  );
+
+  // ========================================
+  // 보호된 API (인증 필요)
+  // ========================================
+
+  /**
+   * 내 프로필 조회
+   * GET /api/users/profile
+   */
+  router.get(
+    '/profile',
+    requireAuth(tokenService),
+    asyncErrorCatcher(userController.getProfile)
+  );
+
+  /**
+   * 내 프로필 수정
+   * PUT /api/users/profile
+   */
+  router.put(
+    '/profile',
+    requireAuth(tokenService),
+    validateUserProfileUpdate(),
+    handleValidationErrors(),
+    asyncErrorCatcher(userController.updateProfile)
+  );
+
+  /**
+   * 내 계정 비활성화
+   * DELETE /api/users/profile
+   */
+  router.delete(
+    '/profile',
+    requireAuth(tokenService),
+    asyncErrorCatcher(userController.deactivateAccount)
+  );
+
+  // ========================================
+  // 🔧 수정: 본인 또는 관리자만 접근 가능한 API
+  // requireSelfOrAdmin() - 매개변수 없이 호출
+  // ========================================
+
+  /**
+   * 특정 사용자 프로필 조회
+   * GET /api/users/:userId
+   */
+  router.get(
+    '/:userId',
+    requireAuth(tokenService),
+    requireSelfOrAdmin(), // 🔧 수정: 매개변수 제거
+    asyncErrorCatcher(
+      async (req: Request, res: Response, next: NextFunction) => {
+        const userId = req.params.userId;
+        if (!userId) {
+          res.status(400).json({
+            success: false,
+            message: '사용자 ID가 필요합니다',
+            error: 'USER_ID_REQUIRED',
+            data: null,
+          });
+          return;
+        }
+
+        // 🔧 수정: 타입 안전성 개선
+        const originalUserId = req.user?.id;
+        if (req.user) {
+          req.user.id = userId;
+        }
+
+        try {
+          await userController.getProfile(req, res, next);
+        } finally {
+          // 원본 user ID 복원
+          if (req.user && originalUserId) {
+            req.user.id = originalUserId;
+          }
+        }
+      }
+    )
+  );
+
+  /**
+   * 특정 사용자 프로필 수정
+   * PUT /api/users/:userId
+   */
+  router.put(
+    '/:userId',
+    requireAuth(tokenService),
+    requireSelfOrAdmin(), // 🔧 수정: 매개변수 제거
+    validateUserProfileUpdate(),
+    handleValidationErrors(),
+    asyncErrorCatcher(
+      async (req: Request, res: Response, next: NextFunction) => {
+        const userId = req.params.userId;
+        if (!userId) {
+          res.status(400).json({
+            success: false,
+            message: '사용자 ID가 필요합니다',
+            error: 'USER_ID_REQUIRED',
+            data: null,
+          });
+          return;
+        }
+
+        // 🔧 수정: 타입 안전성 개선
+        const originalUserId = req.user?.id;
+        if (req.user) {
+          req.user.id = userId;
+        }
+
+        try {
+          await userController.updateProfile(req, res, next);
+        } finally {
+          // 원본 user ID 복원
+          if (req.user && originalUserId) {
+            req.user.id = originalUserId;
+          }
+        }
+      }
+    )
+  );
+
+  /**
+   * 특정 사용자 계정 비활성화
+   * DELETE /api/users/:userId
+   */
+  router.delete(
+    '/:userId',
+    requireAuth(tokenService),
+    requireSelfOrAdmin(), // 🔧 수정: 매개변수 제거
+    asyncErrorCatcher(
+      async (req: Request, res: Response, next: NextFunction) => {
+        const userId = req.params.userId;
+        if (!userId) {
+          res.status(400).json({
+            success: false,
+            message: '사용자 ID가 필요합니다',
+            error: 'USER_ID_REQUIRED',
+            data: null,
+          });
+          return;
+        }
+
+        // 🔧 수정: 타입 안전성 개선
+        const originalUserId = req.user?.id;
+        if (req.user) {
+          req.user.id = userId;
+        }
+
+        try {
+          await userController.deactivateAccount(req, res, next);
+        } finally {
+          // 원본 user ID 복원
+          if (req.user && originalUserId) {
+            req.user.id = originalUserId;
+          }
+        }
+      }
+    )
   );
 
   return router;

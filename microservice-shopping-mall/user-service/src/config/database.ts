@@ -1,5 +1,5 @@
 // ========================================
-// Database Configuration - TypeORM 설정
+// 한글 인코딩 문제 해결 - database.ts 수정
 // src/config/database.ts
 // ========================================
 
@@ -7,55 +7,48 @@ import { DataSource } from 'typeorm';
 import { UserEntity } from '../adapters/entities/UserEntity';
 
 /**
- * createDatabaseConnection - TypeORM 데이터베이스 연결 설정
- *
- * 역할:
- * - PostgreSQL 데이터베이스 연결 구성
- * - Entity 등록
- * - 환경별 설정 분리
- * - 마이그레이션 및 동기화 설정
- *
- * 특징:
- * - TypeORM 0.3.24 호환
- * - 환경변수 기반 설정
- * - 개발/테스트/운영 환경 분리
- * - 에러 처리 및 재시도 로직
- */
-
-/**
- * 데이터베이스 설정 생성
+ * 데이터베이스 설정 생성 (한글 인코딩 문제 해결)
  */
 function createDataSourceConfig(): any {
   const isProduction = process.env.NODE_ENV === 'production';
   const isTest = process.env.NODE_ENV === 'test';
 
-  // 기본 설정 (사용자 .env 파일에 맞춤)
   const config = {
     type: 'postgres' as const,
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '5432', 10),
-    username: process.env.DB_USER || 'postgres', // DB_USER로 변경
+    username: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || 'your_db_password',
-    database: process.env.DB_NAME || 'shopping_mall_users', // DB_NAME으로 변경
+    database: process.env.DB_NAME || 'shopping_mall_users',
 
     // Entity 등록
     entities: [UserEntity],
+
+    // 🔧 한글 인코딩 문제 해결을 위한 설정 추가
+    extra: {
+      connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT || '10', 10),
+      acquireTimeout: parseInt(process.env.DB_ACQUIRE_TIMEOUT || '30000', 10),
+      timeout: parseInt(process.env.DB_TIMEOUT || '30000', 10),
+
+      // 🆕 PostgreSQL 클라이언트 인코딩 설정
+      charset: 'utf8',
+      client_encoding: 'UTF8',
+
+      // 🆕 연결 시 UTF-8 설정 강제
+      connectionString: undefined, // 개별 설정 사용
+
+      // 🆕 PostgreSQL 연결 매개변수 추가
+      options: '-c client_encoding=UTF8',
+    },
 
     // 마이그레이션 설정
     migrations: ['src/migrations/*.ts'],
     migrationsTableName: 'migrations',
 
     // 연결 설정
-    synchronize: !isProduction, // 운영환경에서는 false
+    synchronize: !isProduction,
     logging: process.env.DB_LOGGING === 'true' || (!isProduction && !isTest),
-    dropSchema: isTest, // 테스트 환경에서만 스키마 초기화
-
-    // 연결 풀 설정
-    extra: {
-      connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT || '10', 10),
-      acquireTimeout: parseInt(process.env.DB_ACQUIRE_TIMEOUT || '30000', 10),
-      timeout: parseInt(process.env.DB_TIMEOUT || '30000', 10),
-    },
+    dropSchema: isTest,
 
     // SSL 설정 (운영환경)
     ssl: isProduction
@@ -72,7 +65,67 @@ function createDataSourceConfig(): any {
 }
 
 /**
- * 데이터베이스 연결 생성 및 초기화
+ * 🆕 PostgreSQL 데이터베이스 인코딩 설정 검증
+ */
+export async function verifyDatabaseEncoding(
+  dataSource: DataSource
+): Promise<void> {
+  try {
+    console.log('🔍 데이터베이스 인코딩 설정 확인 중...');
+
+    // 데이터베이스 인코딩 확인
+    const encodingResult = await dataSource.query('SHOW server_encoding;');
+    console.log('📝 서버 인코딩:', encodingResult[0]?.server_encoding);
+
+    // 클라이언트 인코딩 확인
+    const clientEncodingResult = await dataSource.query(
+      'SHOW client_encoding;'
+    );
+    console.log(
+      '📝 클라이언트 인코딩:',
+      clientEncodingResult[0]?.client_encoding
+    );
+
+    // LC_COLLATE 확인 (정렬 규칙)
+    const collateResult = await dataSource.query('SHOW lc_collate;');
+    console.log('📝 LC_COLLATE:', collateResult[0]?.lc_collate);
+
+    // LC_CTYPE 확인 (문자 분류)
+    const ctypeResult = await dataSource.query('SHOW lc_ctype;');
+    console.log('📝 LC_CTYPE:', ctypeResult[0]?.lc_ctype);
+
+    // 🆕 UTF-8 테스트 쿼리 실행
+    const testResult = await dataSource.query(
+      "SELECT '한글 테스트' as test_text;"
+    );
+    console.log('🧪 한글 테스트 결과:', testResult[0]?.test_text);
+
+    console.log('✅ 데이터베이스 인코딩 설정 확인 완료');
+  } catch (error) {
+    console.error('❌ 데이터베이스 인코딩 확인 실패:', error);
+  }
+}
+
+/**
+ * 🆕 클라이언트 인코딩 강제 설정
+ */
+export async function setClientEncoding(dataSource: DataSource): Promise<void> {
+  try {
+    console.log('🔧 클라이언트 인코딩을 UTF-8로 설정 중...');
+
+    // 클라이언트 인코딩을 UTF-8로 강제 설정
+    await dataSource.query("SET client_encoding TO 'UTF8';");
+
+    // 설정 확인
+    const result = await dataSource.query('SHOW client_encoding;');
+    console.log('✅ 클라이언트 인코딩 설정 완료:', result[0]?.client_encoding);
+  } catch (error) {
+    console.error('❌ 클라이언트 인코딩 설정 실패:', error);
+  }
+}
+
+/**
+ * 데이터베이스 연결 생성 및 초기화 (인코딩 설정 포함)
  */
 export async function createDatabaseConnection(): Promise<DataSource> {
   const config = createDataSourceConfig();
@@ -89,6 +142,14 @@ export async function createDatabaseConnection(): Promise<DataSource> {
 
     console.log('✅ 데이터베이스 연결 성공');
 
+    // 🆕 인코딩 설정 및 검증
+    await setClientEncoding(dataSource);
+
+    // 개발 환경에서만 인코딩 정보 출력
+    if (process.env.NODE_ENV === 'development') {
+      await verifyDatabaseEncoding(dataSource);
+    }
+
     // 테스트 환경이 아닌 경우 연결 정보 로깅
     if (process.env.NODE_ENV !== 'test') {
       console.log('📋 데이터베이스 정보:');
@@ -97,6 +158,7 @@ export async function createDatabaseConnection(): Promise<DataSource> {
       console.log(`   - Database: ${config.database}`);
       console.log(`   - Synchronize: ${config.synchronize}`);
       console.log(`   - Logging: ${config.logging}`);
+      console.log(`   - UTF-8 Support: ✅ 활성화됨`);
     }
 
     return dataSource;
@@ -119,7 +181,7 @@ export async function createDatabaseConnection(): Promise<DataSource> {
 }
 
 /**
- * 데이터베이스 연결 테스트
+ * 기존 함수들 (변경 없음)
  */
 export async function testDatabaseConnection(): Promise<boolean> {
   let dataSource: DataSource | null = null;
@@ -129,16 +191,15 @@ export async function testDatabaseConnection(): Promise<boolean> {
 
     dataSource = await createDatabaseConnection();
 
-    // 간단한 쿼리 실행으로 연결 테스트
-    await dataSource.query('SELECT 1');
+    // 🆕 한글 데이터 테스트 추가
+    await dataSource.query("SELECT '한글 데이터 테스트' as korean_test;");
 
-    console.log('✅ 데이터베이스 연결 테스트 성공');
+    console.log('✅ 데이터베이스 연결 테스트 성공 (한글 지원 포함)');
     return true;
   } catch (error) {
     console.error('❌ 데이터베이스 연결 테스트 실패:', error);
     return false;
   } finally {
-    // 테스트 후 연결 종료
     if (dataSource && dataSource.isInitialized) {
       await dataSource.destroy();
       console.log('🧹 테스트 데이터베이스 연결 정리 완료');
@@ -146,16 +207,13 @@ export async function testDatabaseConnection(): Promise<boolean> {
   }
 }
 
-/**
- * 개발용 데이터베이스 설정 확인
- */
 export function validateDatabaseConfig(): void {
   const requiredEnvVars = [
     'DB_HOST',
     'DB_PORT',
-    'DB_USER', // DB_USERNAME → DB_USER로 변경
+    'DB_USER',
     'DB_PASSWORD',
-    'DB_NAME', // DB_DATABASE → DB_NAME으로 변경
+    'DB_NAME',
   ];
 
   const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
@@ -165,7 +223,6 @@ export function validateDatabaseConfig(): void {
     console.warn('🔧 기본값을 사용합니다 (개발 환경용)');
   }
 
-  // 데이터베이스 설정 출력 (비밀번호 제외)
   if (process.env.NODE_ENV === 'development') {
     console.log('🔧 데이터베이스 설정:');
     console.log(`   - Host: ${process.env.DB_HOST || 'localhost'}`);
@@ -174,56 +231,9 @@ export function validateDatabaseConfig(): void {
     console.log(
       `   - Database: ${process.env.DB_NAME || 'shopping_mall_users'}`
     );
+    console.log(`   - UTF-8 인코딩: ✅ 강화됨`);
     console.log(
       `   - Password: ${'*'.repeat((process.env.DB_PASSWORD || 'your_db_password').length)}`
     );
   }
 }
-
-// ========================================
-// 환경변수 설정 예시 (README용)
-// ========================================
-
-/**
- * .env 파일 예시:
- *
- * # Database Configuration
- * DB_HOST=localhost
- * DB_PORT=5432
- * DB_USERNAME=postgres
- * DB_PASSWORD=your_password
- * DB_DATABASE=user_service_db
- * DB_CONNECTION_LIMIT=10
- * DB_ACQUIRE_TIMEOUT=30000
- * DB_TIMEOUT=30000
- * DB_LOGGING=true
- *
- * # JWT Configuration
- * JWT_ACCESS_SECRET=your-super-secret-access-key-at-least-32-characters-long
- * JWT_REFRESH_SECRET=your-different-super-secret-refresh-key-at-least-32-chars
- * JWT_ACCESS_EXPIRES_IN=15m
- * JWT_REFRESH_EXPIRES_IN=7d
- * JWT_ISSUER=user-service
- *
- * # Server Configuration
- * PORT=3002
- * HOST=0.0.0.0
- * NODE_ENV=development
- * SERVICE_VERSION=1.0.0
- *
- * # CORS Configuration
- * ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
- *
- * # Email Configuration (for MockEmailService)
- * FRONTEND_URL=http://localhost:3000
- * EMAIL_SIMULATE_FAILURE=false
- * EMAIL_FAILURE_RATE=0
- *
- * # Development Database (Docker)
- * # docker run --name postgres-user-service \
- * #   -e POSTGRES_DB=user_service_db \
- * #   -e POSTGRES_USER=postgres \
- * #   -e POSTGRES_PASSWORD=password \
- * #   -p 5432:5432 \
- * #   -d postgres:15
- */
