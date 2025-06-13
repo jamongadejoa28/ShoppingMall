@@ -12,15 +12,8 @@ import helmet from "helmet";
 import "reflect-metadata";
 import { DataSource } from "typeorm";
 import { DatabaseConfig } from "./infrastructure/config/DatabaseConfig";
-import { DIContainer } from "./infrastructure/di/Container";
+import { DIContainer } from "./infrastructure/di/exeContainer";
 import { TYPES } from "./infrastructure/di/types";
-// 기존 imports 뒤에 추가
-import {
-    errorHandlingMiddleware,
-    healthCheckHandler,
-    notFoundHandler,
-} from "./frameworks/middlewares/common";
-import { createProductRoutes } from "./frameworks/routes/productRoutes";
 
 // 환경 변수 로드
 config();
@@ -144,49 +137,59 @@ class ProductServiceApp {
    * 라우트 설정
    */
   private setupRoutes(): void {
-    // Health Check (Root)
-    this.app.get("/", healthCheckHandler);
-    this.app.get("/health", healthCheckHandler);
+    // 헬스 체크 엔드포인트
+    this.app.get("/health", async (req, res) => {
+      try {
+        // 데이터베이스 연결 상태 확인
+        const isDbConnected = DatabaseConfig.isConnected();
 
-    // API 정보
-    this.app.get("/api", (req, res) => {
-      const requestId = (req as any).requestId || "unknown";
-      res.json({
-        success: true,
-        message: "Product Service API",
-        data: {
+        // DI Container 상태 확인
+        const container = DIContainer.getContainer();
+        const isDiReady = container !== null;
+
+        const healthStatus = {
+          status: "ok",
+          timestamp: new Date().toISOString(),
           service: "product-service",
           version: "1.0.0",
-          description: "Clean Architecture 기반 상품 관리 마이크로서비스",
-          endpoints: {
-            products: "/api/v1/products",
-            health: "/health",
-            docs: "/api/docs",
+          environment: process.env.NODE_ENV,
+          checks: {
+            database: isDbConnected ? "healthy" : "unhealthy",
+            diContainer: isDiReady ? "healthy" : "unhealthy",
           },
-          features: [
-            "상품 생성/조회/목록",
-            "카테고리 기반 분류",
-            "재고 관리 연동",
-            "검색 및 필터링",
-            "캐시 최적화",
-          ],
+        };
+
+        const isHealthy = isDbConnected && isDiReady;
+
+        res.status(isHealthy ? 200 : 503).json(healthStatus);
+      } catch (error) {
+        console.error("❌ [Health Check] 오류:", error);
+        res.status(503).json({
+          status: "error",
+          timestamp: new Date().toISOString(),
+          service: "product-service",
+          error: "Health check failed",
+        });
+      }
+    });
+
+    // API 정보 엔드포인트
+    this.app.get("/", (req, res) => {
+      res.json({
+        service: "Product Service",
+        version: "1.0.0",
+        description: "마이크로서비스 쇼핑몰 - 상품 관리 서비스",
+        endpoints: {
+          health: "/health",
+          docs: "/api/docs",
+          api: "/api/v1",
         },
         timestamp: new Date().toISOString(),
-        requestId,
       });
     });
 
-    // API v1 Routes - 새로운 REST API 추가!
-    this.app.use("/api/v1/products", createProductRoutes());
-
-    console.log("✅ [ProductService] API 라우트 설정 완료");
-    console.log("📋 [ProductService] 사용 가능한 엔드포인트:");
-    console.log("   GET  /              - Health Check");
-    console.log("   GET  /health        - Health Check");
-    console.log("   GET  /api           - API 정보");
-    console.log("   POST /api/v1/products       - 상품 생성");
-    console.log("   GET  /api/v1/products       - 상품 목록 조회");
-    console.log("   GET  /api/v1/products/:id   - 상품 상세 조회");
+    // 테스트용 라우트들
+    this.setupTestRoutes();
   }
 
   /**
@@ -296,13 +299,38 @@ class ProductServiceApp {
    * 에러 핸들링 설정
    */
   private setupErrorHandling(): void {
-    // 404 Not Found
-    this.app.use(notFoundHandler  );
+    // 404 에러 핸들러
+    this.app.use("*", (req, res) => {
+      res.status(404).json({
+        status: "error",
+        message: "Endpoint not found",
+        path: req.originalUrl,
+        method: req.method,
+        timestamp: new Date().toISOString(),
+      });
+    });
 
-    // Global Error Handler
-    this.app.use(errorHandlingMiddleware);
+    // 글로벌 에러 핸들러
+    this.app.use(
+      (
+        error: any,
+        req: express.Request,
+        res: express.Response,
+        next: express.NextFunction
+      ) => {
+        console.error("❌ [Global Error Handler]:", error);
 
-    console.log("✅ [ProductService] 에러 핸들링 설정 완료");
+        // 개발 환경에서는 스택 트레이스 포함
+        const isDevelopment = process.env.NODE_ENV === "development";
+
+        res.status(error.status || 500).json({
+          status: "error",
+          message: error.message || "Internal Server Error",
+          ...(isDevelopment && { stack: error.stack }),
+          timestamp: new Date().toISOString(),
+        });
+      }
+    );
   }
 
   /**

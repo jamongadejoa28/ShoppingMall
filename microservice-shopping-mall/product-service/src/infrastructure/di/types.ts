@@ -29,4 +29,5 @@ export const TYPES = {
   RedisConfig: Symbol.for("RedisConfig"),
   CacheKeyBuilder: Symbol.for("CacheKeyBuilder"),
   CacheStrategyManager: Symbol.for("CacheStrategyManager"),
+  ProductController: Symbol.for("ProductController"),
 };

@@ -1,7 +1,7 @@
 import "reflect-metadata"; // Inversify를 위한 메타데이터 지원
-import { DIContainer } from "../di/Container";
-import { RedisConfig } from "../config/RedisConfig";
 import { DatabaseConfig } from "../config/DatabaseConfig";
+import { RedisConfig } from "../config/RedisConfig";
+import { DIContainer } from "../di/exeContainer";
 
 /**
  * 애플리케이션 부트스트랩 클래스

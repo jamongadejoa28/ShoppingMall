@@ -1,5 +1,5 @@
 // ========================================
-// DI Container - ProductController 바인딩 추가
+// DI Container - 완전 수정본
 // src/infrastructure/di/Container.ts
 // ========================================
 
@@ -27,9 +27,6 @@ import { MockEventPublisher } from "../../adapters/MockEventPublisher";
 import { CreateProductUseCase } from "../../usecases/CreateProductUseCase";
 import { GetProductDetailUseCase } from "../../usecases/GetProductDetailUseCase";
 import { GetProductListUseCase } from "../../usecases/GetProductListUseCase";
-
-// Controllers
-import { ProductController } from "../../frameworks/controllers/ProductController";
 
 // Config and Strategy
 import { RedisConfig } from "../config/RedisConfig";
@@ -71,10 +68,6 @@ export class DIContainer {
       // 5. 유스케이스 바인딩
       DIContainer.bindUseCases(container);
       console.log("✅ [DIContainer] 유스케이스 바인딩 완료");
-
-      // 6. 컨트롤러 바인딩 - 이 라인이 추가되어야 함!
-      DIContainer.bindControllers(container);
-      console.log("✅ [DIContainer] 컨트롤러 바인딩 완료");
 
       DIContainer.instance = container;
       console.log("🎉 [DIContainer] 전체 바인딩 완료");
@@ -180,16 +173,6 @@ export class DIContainer {
       .bind<GetProductListUseCase>(TYPES.GetProductListUseCase)
       .to(GetProductListUseCase)
       .inTransientScope();
-  }
-
-  /**
-   * 컨트롤러 바인딩 - 새로 추가!
-   */
-  private static bindControllers(container: Container): void {
-    container
-      .bind<ProductController>(TYPES.ProductController)
-      .to(ProductController)
-      .inSingletonScope();
   }
 
   /**
