@@ -2,11 +2,12 @@
 // ProductRepositoryImpl - Infrastructure 계층
 // src/adapters/ProductRepositoryImpl.ts
 // ========================================
-
+import { injectable, inject } from "inversify";
 import { Repository, DataSource, SelectQueryBuilder } from "typeorm";
 import { Product } from "../entities/Product";
 import { ProductEntity } from "./entities/ProductEntity";
 import { ProductRepository } from "../usecases/types";
+import { TYPES } from "../infrastructure/di/types";
 
 /**
  * ProductRepositoryImpl - PostgreSQL 기반 Product Repository 구현체
@@ -24,10 +25,11 @@ import { ProductRepository } from "../usecases/types";
  * - 도메인 로직 없음 (순수 데이터 접근)
  * - 에러 변환 (infrastructure → domain)
  */
+@injectable()
 export class ProductRepositoryImpl implements ProductRepository {
   private repository: Repository<ProductEntity>;
 
-  constructor(private dataSource: DataSource) {
+  constructor(@inject(TYPES.DataSource) private dataSource: DataSource) {
     this.repository = dataSource.getRepository(ProductEntity);
   }
 

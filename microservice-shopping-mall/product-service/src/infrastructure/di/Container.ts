@@ -1,5 +1,13 @@
+// ========================================
+// DI Container - 완전 수정본
+// src/infrastructure/di/Container.ts
+// ========================================
+
 import { Container } from "inversify";
 import { DataSource } from "typeorm";
+
+// DI 심볼 import
+import { TYPES } from "./types";
 
 // Interfaces
 import { ProductRepository } from "../../usecases/types";
@@ -13,6 +21,7 @@ import { ProductRepositoryImpl } from "../../adapters/ProductRepositoryImpl";
 import { CategoryRepositoryImpl } from "../../adapters/CategoryRepositoryImpl";
 import { InventoryRepositoryImpl } from "../../adapters/InventoryRepositoryImpl";
 import { CacheServiceImpl } from "../../adapters/CacheServiceImpl";
+import { MockEventPublisher } from "../../adapters/MockEventPublisher";
 
 // Use Cases
 import { CreateProductUseCase } from "../../usecases/CreateProductUseCase";
@@ -24,29 +33,6 @@ import { RedisConfig } from "../config/RedisConfig";
 import { CacheKeyBuilder } from "../cache/CacheKeyBuilder";
 import { CacheStrategyManager } from "../cache/CacheStrategyManager";
 import { DatabaseConfig } from "../config/DatabaseConfig";
-
-// 의존성 주입 심볼 정의
-export const TYPES = {
-  // Repositories
-  ProductRepository: Symbol.for("ProductRepository"),
-  CategoryRepository: Symbol.for("CategoryRepository"),
-  InventoryRepository: Symbol.for("InventoryRepository"),
-
-  // Services
-  CacheService: Symbol.for("CacheService"),
-  EventPublisher: Symbol.for("EventPublisher"),
-
-  // Use Cases
-  CreateProductUseCase: Symbol.for("CreateProductUseCase"),
-  GetProductDetailUseCase: Symbol.for("GetProductDetailUseCase"),
-  GetProductListUseCase: Symbol.for("GetProductListUseCase"),
-
-  // Infrastructure
-  DataSource: Symbol.for("DataSource"),
-  RedisConfig: Symbol.for("RedisConfig"),
-  CacheKeyBuilder: Symbol.for("CacheKeyBuilder"),
-  CacheStrategyManager: Symbol.for("CacheStrategyManager"),
-};
 
 /**
  * DI 컨테이너 설정 클래스
@@ -61,22 +47,30 @@ export class DIContainer {
     if (!DIContainer.instance) {
       const container = new Container();
 
+      console.log("🔧 [DIContainer] 바인딩 시작...");
+
       // 1. 설정 바인딩
       await DIContainer.bindConfigurations(container);
+      console.log("✅ [DIContainer] 설정 바인딩 완료");
 
       // 2. 인프라스트럭처 바인딩
       await DIContainer.bindInfrastructure(container);
+      console.log("✅ [DIContainer] 인프라스트럭처 바인딩 완료");
 
       // 3. 리포지토리 바인딩
       DIContainer.bindRepositories(container);
+      console.log("✅ [DIContainer] 리포지토리 바인딩 완료");
 
       // 4. 서비스 바인딩
       DIContainer.bindServices(container);
+      console.log("✅ [DIContainer] 서비스 바인딩 완료");
 
       // 5. 유스케이스 바인딩
       DIContainer.bindUseCases(container);
+      console.log("✅ [DIContainer] 유스케이스 바인딩 완료");
 
       DIContainer.instance = container;
+      console.log("🎉 [DIContainer] 전체 바인딩 완료");
     }
 
     return DIContainer.instance;
@@ -154,11 +148,11 @@ export class DIContainer {
       })
       .inSingletonScope();
 
-    // EventPublisher는 나중에 구현
-    // container
-    //   .bind<EventPublisher>(TYPES.EventPublisher)
-    //   .to(EventPublisherImpl)
-    //   .inSingletonScope();
+    // EventPublisher 바인딩 (MockEventPublisher 사용)
+    container
+      .bind<EventPublisher>(TYPES.EventPublisher)
+      .to(MockEventPublisher)
+      .inSingletonScope();
   }
 
   /**

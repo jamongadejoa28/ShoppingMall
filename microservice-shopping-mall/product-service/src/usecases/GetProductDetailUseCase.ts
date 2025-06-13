@@ -1,5 +1,5 @@
 // src/usecases/GetProductDetailUseCase.ts
-
+import { injectable, inject } from "inversify";
 import { Product } from "../entities/Product";
 import { Category } from "../entities/Category";
 import { Inventory } from "../entities/Inventory";
@@ -9,6 +9,7 @@ import { InventoryRepository } from "../repositories/InventoryRepository";
 import { CacheService } from "../services/CacheService";
 import { DomainError } from "../shared/errors/DomainError";
 import { Result } from "../shared/types/Result";
+import { TYPES } from "../infrastructure/di/types";
 
 // 응답 DTO 타입 정의
 export interface ProductDetailResponse {
@@ -44,15 +45,19 @@ export interface ProductDetailResponse {
   updatedAt: Date;
 }
 
+@injectable()
 export class GetProductDetailUseCase {
   private readonly CACHE_TTL = 300; // 5분
   private readonly CACHE_KEY_PREFIX = "product_detail:";
 
   constructor(
+    @inject(TYPES.ProductRepository)
     private readonly productRepository: ProductRepository,
+    @inject(TYPES.CategoryRepository)
     private readonly categoryRepository: CategoryRepository,
+    @inject(TYPES.InventoryRepository)
     private readonly inventoryRepository: InventoryRepository,
-    private readonly cacheService: CacheService
+    @inject(TYPES.CacheService) private readonly cacheService: CacheService
   ) {}
 
   async execute(productId: string): Promise<Result<ProductDetailResponse>> {

@@ -2,11 +2,12 @@
 // InventoryRepositoryImpl - Infrastructure 계층 (수정됨)
 // src/adapters/InventoryRepositoryImpl.ts
 // ========================================
-
+import { injectable, inject } from "inversify";
 import { Repository, DataSource, QueryRunner } from "typeorm";
 import { Inventory } from "../entities/Inventory";
 import { InventoryEntity, InventoryStatus } from "./entities/InventoryEntity";
 import { InventoryRepository } from "../usecases/types";
+import { TYPES } from "../infrastructure/di/types";
 
 /**
  * InventoryRepositoryImpl - PostgreSQL 기반 Inventory Repository 구현체
@@ -25,10 +26,11 @@ import { InventoryRepository } from "../usecases/types";
  * - Row-level locking 지원
  * - 상태별 인덱싱 최적화
  */
+@injectable()
 export class InventoryRepositoryImpl implements InventoryRepository {
   private repository: Repository<InventoryEntity>;
 
-  constructor(private dataSource: DataSource) {
+  constructor(@inject(TYPES.DataSource) private dataSource: DataSource) {
     this.repository = dataSource.getRepository(InventoryEntity);
   }
 

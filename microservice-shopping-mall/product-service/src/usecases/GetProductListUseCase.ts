@@ -1,5 +1,6 @@
 // src/usecases/GetProductListUseCase.ts
 
+import { injectable, inject } from "inversify";
 import { Product } from "../entities/Product";
 import { Category } from "../entities/Category";
 import { Inventory } from "../entities/Inventory";
@@ -9,6 +10,7 @@ import { InventoryRepository } from "../repositories/InventoryRepository";
 import { CacheService } from "../services/CacheService";
 import { DomainError } from "../shared/errors/DomainError";
 import { Result } from "../shared/types/Result";
+import { TYPES } from "../infrastructure/di/types";
 
 // 상품 목록 조회 요청 DTO
 export interface GetProductListRequest {
@@ -78,6 +80,7 @@ interface SearchFilters {
   sortBy?: string;
 }
 
+@injectable()
 export class GetProductListUseCase {
   private readonly DEFAULT_PAGE = 1;
   private readonly DEFAULT_LIMIT = 20;
@@ -86,10 +89,13 @@ export class GetProductListUseCase {
   private readonly CACHE_KEY_PREFIX = "product_list:";
 
   constructor(
+    @inject(TYPES.ProductRepository)
     private readonly productRepository: ProductRepository,
+    @inject(TYPES.CategoryRepository)
     private readonly categoryRepository: CategoryRepository,
+    @inject(TYPES.InventoryRepository)
     private readonly inventoryRepository: InventoryRepository,
-    private readonly cacheService: CacheService
+    @inject(TYPES.CacheService) private readonly cacheService: CacheService
   ) {}
 
   async execute(

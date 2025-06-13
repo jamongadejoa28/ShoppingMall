@@ -2,9 +2,33 @@ import { DataSource } from "typeorm";
 import { ProductEntity } from "../../adapters/entities/ProductEntity";
 import { CategoryEntity } from "../../adapters/entities/CategoryEntity";
 import { InventoryEntity } from "../../adapters/entities/InventoryEntity";
+import * as dotenv from "dotenv";
+
+// .env 파일의 환경 변수를 로드합니다.
+dotenv.config();
 
 /**
- * 데이터베이스 설정 클래스
+ * TypeORM CLI가 마이그레이션 작업을 위해 사용할 DataSource 인스턴스입니다.
+ * 반드시 파일 최상단에서 export 되어야 합니다.
+ */
+export const AppDataSource = new DataSource({
+  type: "postgres",
+  host: process.env.DB_HOST || "localhost",
+  port: parseInt(process.env.DB_PORT || "5432", 10),
+  username: process.env.DB_USER || "postgres",
+  password: process.env.DB_PASSWORD || "",
+  database: process.env.DB_NAME || "shopping_mall_products",
+  entities: [ProductEntity, CategoryEntity, InventoryEntity],
+  // CLI는 마이그레이션만 신경쓰므로 synchronize는 false가 안전합니다.
+  synchronize: false,
+  logging: true, // CLI 실행 시 SQL 쿼리를 보려면 true로 설정
+  // 마이그레이션 파일 경로를 명시합니다.
+  migrations: ["src/infrastructure/database/migrations/*.ts"],
+});
+
+/**
+ * 기존의 DatabaseConfig 클래스는 애플리케이션 런타임에서
+ * 데이터베이스 연결을 관리하는 역할을 그대로 수행합니다.
  */
 export class DatabaseConfig {
   private static dataSource: DataSource | null = null;
@@ -13,47 +37,18 @@ export class DatabaseConfig {
    * TypeORM DataSource 생성 및 초기화
    */
   static async createDataSource(): Promise<DataSource> {
-    if (DatabaseConfig.dataSource) {
-      return DatabaseConfig.dataSource;
+    // 이미 연결이 초기화되었다면 기존 연결을 반환합니다.
+    if (this.dataSource && this.dataSource.isInitialized) {
+      return this.dataSource;
     }
 
-    const dataSource = new DataSource({
-      type: "postgres",
-      host: process.env.DB_HOST || "localhost",
-      port: parseInt(process.env.DB_PORT || "5432"),
-      username: process.env.DB_USER || "postgres",
-      password: process.env.DB_PASSWORD || "",
-      database: process.env.DB_NAME || "shopping_mall_products",
-
-      // 엔티티 설정
-      entities: [ProductEntity, CategoryEntity, InventoryEntity],
-
-      // 개발 환경 설정
-      synchronize: process.env.NODE_ENV === "development",
-      logging:
-        process.env.NODE_ENV === "development" ? ["query", "error"] : ["error"],
-
-      // 연결 풀 설정
-      extra: {
-        max: parseInt(process.env.DB_POOL_SIZE || "10"),
-        min: parseInt(process.env.DB_POOL_MIN || "2"),
-        idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT || "30000"),
-        connectionTimeoutMillis: parseInt(
-          process.env.DB_CONNECTION_TIMEOUT || "5000"
-        ),
-      },
-
-      // 마이그레이션 설정
-      migrations: ["src/infrastructure/database/migrations/*.ts"],
-      migrationsRun: false, // 수동 마이그레이션
-    });
+    // CLI와 동일한 설정을 사용하는 AppDataSource 인스턴스를 사용하여 초기화합니다.
+    this.dataSource = AppDataSource;
 
     try {
-      await dataSource.initialize();
+      await this.dataSource.initialize();
       console.log("[DatabaseConfig] PostgreSQL 연결 성공");
-
-      DatabaseConfig.dataSource = dataSource;
-      return dataSource;
+      return this.dataSource;
     } catch (error) {
       console.error("[DatabaseConfig] PostgreSQL 연결 실패:", error);
       throw error;
@@ -64,16 +59,16 @@ export class DatabaseConfig {
    * 데이터베이스 연결 상태 확인
    */
   static isConnected(): boolean {
-    return DatabaseConfig.dataSource?.isInitialized || false;
+    return this.dataSource?.isInitialized || false;
   }
 
   /**
    * 연결 정리
    */
   static async disconnect(): Promise<void> {
-    if (DatabaseConfig.dataSource?.isInitialized) {
-      await DatabaseConfig.dataSource.destroy();
-      DatabaseConfig.dataSource = null;
+    if (this.dataSource?.isInitialized) {
+      await this.dataSource.destroy();
+      this.dataSource = null;
       console.log("[DatabaseConfig] PostgreSQL 연결 종료");
     }
   }

@@ -1,0 +1,118 @@
+# ========================================
+# Product Service Docker Compose Configuration
+# product-service/docker-compose.yml
+# ========================================
+
+version: "3.8"
+
+services:
+  # PostgreSQL Database for Product Service (독립 실행)
+  product-postgres:
+    image: postgres:15-alpine
+    container_name: product-service-postgres
+    environment:
+      POSTGRES_DB: shopping_mall_products
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: rlarkdmf
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C"
+    ports:
+      - "5433:5432" # 로컬 PostgreSQL과 충돌 방지
+    volumes:
+      - product_postgres_data:/var/lib/postgresql/data
+      - ./docker/init:/docker-entrypoint-initdb.d
+    networks:
+      - product-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d shopping_mall_products"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    command: >
+      postgres -c log_statement=all
+               -c log_destination=stderr
+               -c max_connections=200
+               -c shared_buffers=256MB
+
+  # Redis Cache for Product Service (독립 실행)
+  product-redis:
+    image: redis:7-alpine
+    container_name: product-service-redis
+    ports:
+      - "6380:6379" # 로컬 Redis와 충돌 방지
+    volumes:
+      - product_redis_data:/data
+      - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf
+    networks:
+      - product-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+  # Redis Commander (개발용 - 선택사항)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: product-redis-commander
+    environment:
+      - REDIS_HOSTS=local:product-redis:6379
+      - HTTP_USER=admin
+      - HTTP_PASSWORD=admin123
+    ports:
+      - "8081:8081"
+    depends_on:
+      - product-redis
+    networks:
+      - product-network
+    profiles: ["dev"] # 개발 환경에서만 실행
+
+  # pgAdmin (개발용 - 선택사항)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: product-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@product-service.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "8082:80"
+    depends_on:
+      - product-postgres
+    volumes:
+      - product_pgadmin_data:/var/lib/pgadmin
+    networks:
+      - product-network
+    profiles: ["dev"] # 개발 환경에서만 실행
+
+volumes:
+  product_postgres_data:
+    driver: local
+  product_redis_data:
+    driver: local
+  product_pgadmin_data:
+    driver: local
+
+networks:
+  product-network:
+    driver: bridge
+# ========================================
+# 사용법
+# ========================================
+#
+# 현재 로컬 DB 사용 중이므로 굳이 실행할 필요 없음
+# 필요시에만 사용:
+#
+# 1. 독립 DB 환경이 필요한 경우:
+#    docker-compose up -d product-postgres product-redis
+#    (.env 파일에서 포트를 5433, 6380으로 변경 필요)
+#
+# 2. 개발 도구 포함:
+#    docker-compose --profile dev up -d
+#
+# 3. 특정 서비스만:
+#    docker-compose up -d product-postgres
+#
+# ========================================

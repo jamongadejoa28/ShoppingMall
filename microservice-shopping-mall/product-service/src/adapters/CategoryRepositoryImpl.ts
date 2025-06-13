@@ -2,11 +2,12 @@
 // CategoryRepositoryImpl - Infrastructure 계층 (수정됨)
 // src/adapters/CategoryRepositoryImpl.ts
 // ========================================
-
+import { injectable, inject } from "inversify";
 import { Repository, DataSource, IsNull } from "typeorm";
 import { Category } from "../entities/Category";
 import { CategoryEntity } from "./entities/CategoryEntity";
 import { CategoryRepository } from "../usecases/types";
+import { TYPES } from "../infrastructure/di/types";
 
 /**
  * CategoryRepositoryImpl - PostgreSQL 기반 Category Repository 구현체
@@ -25,10 +26,11 @@ import { CategoryRepository } from "../usecases/types";
  * - 경로(path) 추적 기능
  * - 상품 개수 캐싱
  */
+@injectable()
 export class CategoryRepositoryImpl implements CategoryRepository {
   private repository: Repository<CategoryEntity>;
 
-  constructor(private dataSource: DataSource) {
+  constructor(@inject(TYPES.DataSource) private dataSource: DataSource) {
     this.repository = dataSource.getRepository(CategoryEntity);
   }
 

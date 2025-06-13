@@ -2,9 +2,10 @@
 // CreateProductUseCase - Use Case 계층
 // src/usecases/CreateProductUseCase.ts
 // ========================================
-
+import { injectable, inject } from "inversify";
 import { Product } from "../entities/Product";
 import { Inventory } from "../entities/Inventory";
+import { TYPES } from "../infrastructure/di/types";
 import {
   ProductRepository,
   CategoryRepository,
@@ -32,13 +33,18 @@ import {
  * 6. 트랜잭션 무결성 보장
  * 7. 적절한 에러 처리
  */
+@injectable()
 export class CreateProductUseCase
   implements UseCase<CreateProductRequest, CreateProductResponse>
 {
   constructor(
+    @inject(TYPES.ProductRepository)
     private readonly productRepository: ProductRepository,
+    @inject(TYPES.CategoryRepository)
     private readonly categoryRepository: CategoryRepository,
+    @inject(TYPES.InventoryRepository)
     private readonly inventoryRepository: InventoryRepository,
+    @inject(TYPES.EventPublisher)
     private readonly eventPublisher: EventPublisher
   ) {}
 
