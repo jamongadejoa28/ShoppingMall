@@ -21,7 +21,13 @@ import {
   notFoundHandler,
 } from "./frameworks/middlewares/common";
 import { createProductRoutes } from "./frameworks/routes/productRoutes";
-
+import {
+  setupSwagger,
+  validateSwaggerSpec,
+  logSwaggerInfo,
+} from "./infrastructure/swagger/swaggerMiddleware";
+import swaggerUi from "swagger-ui-express";
+import swaggerJSDoc from "swagger-jsdoc";
 // 환경 변수 로드
 config();
 
@@ -52,6 +58,8 @@ class ProductServiceApp {
       // 2. 미들웨어 설정
       this.setupMiddlewares();
       console.log("✅ [ProductService] 미들웨어 설정 완료");
+
+      this.setupSwagger();
 
       // 3. 라우트 설정
       this.setupRoutes();
@@ -140,12 +148,81 @@ class ProductServiceApp {
     });
   }
 
+  // 🚀 2. Swagger 설정 (클래스 내부에 추가)
+  private setupSwagger(): void {
+    try {
+      // 간단한 Swagger 설정
+      const swaggerOptions = {
+        definition: {
+          openapi: "3.0.0",
+          info: {
+            title: "Product Service API",
+            version: "1.0.0",
+            description: "Clean Architecture 기반 상품 관리 마이크로서비스",
+          },
+          servers: [
+            {
+              url: `http://localhost:${this.PORT}`,
+              description: "개발 서버",
+            },
+          ],
+          tags: [
+            {
+              name: "Products",
+              description: "상품 관리 API",
+            },
+            {
+              name: "Health",
+              description: "서비스 상태 확인",
+            },
+          ],
+        },
+        apis: ["./src/**/*.ts"], // TypeScript 파일에서 JSDoc 주석 스캔
+      };
+
+      const swaggerSpec = swaggerJSDoc(swaggerOptions);
+
+      // Swagger JSON 엔드포인트
+      this.app.get("/api/docs/json", (req, res) => {
+        res.setHeader("Content-Type", "application/json");
+        res.json(swaggerSpec);
+      });
+
+      // Swagger UI 설정
+      this.app.use(
+        "/api/docs",
+        swaggerUi.serve,
+        swaggerUi.setup(swaggerSpec, {
+          explorer: true,
+          customSiteTitle: "Product Service API",
+          customCss: ".swagger-ui .topbar { display: none; }",
+        })
+      );
+
+      console.log("✅ [ProductService] Swagger 설정 완료");
+    } catch (error) {
+      console.error("❌ [ProductService] Swagger 설정 실패:", error);
+    }
+  }
+
   /**
    * 라우트 설정
    */
   private setupRoutes(): void {
     // Health Check (Root)
-    this.app.get("/", healthCheckHandler);
+    this.app.get("/", (req, res) => {
+      res.redirect("/api/docs");
+    });
+    /**
+     * @swagger
+     * /health:
+     *   get:
+     *     tags: [Health]
+     *     summary: 서비스 상태 확인
+     *     responses:
+     *       200:
+     *         description: 서비스 정상 작동
+     */
     this.app.get("/health", healthCheckHandler);
 
     // API 정보
@@ -162,6 +239,7 @@ class ProductServiceApp {
             products: "/api/v1/products",
             health: "/health",
             docs: "/api/docs",
+            spec: "/api/docs/json",
           },
           features: [
             "상품 생성/조회/목록",
@@ -169,11 +247,43 @@ class ProductServiceApp {
             "재고 관리 연동",
             "검색 및 필터링",
             "캐시 최적화",
+            "🚀 Swagger API 문서화",
           ],
         },
         timestamp: new Date().toISOString(),
         requestId,
       });
+    });
+
+    this.app.get("/test/database", async (req, res) => {
+      try {
+        const container = DIContainer.getContainer();
+        const dataSource = container.get<DataSource>(TYPES.DataSource);
+
+        // 한글 데이터 직접 조회
+        const result = await dataSource.query(`
+          SELECT name, brand, description 
+          FROM products 
+          WHERE sku LIKE 'TEST%' 
+          ORDER BY "createdAt" DESC
+        `);
+
+        res.json({
+          success: true,
+          message: "데이터베이스 한글 데이터 확인",
+          data: result,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        res.status(500).json({
+          success: false,
+          message: "데이터베이스 조회 실패",
+          error: console.error(
+            "❌ [ProductService] 서버 시작 실패:",
+            (error as Error).message
+          ),
+        });
+      }
     });
 
     // API v1 Routes - 새로운 REST API 추가!
@@ -187,109 +297,6 @@ class ProductServiceApp {
     console.log("   POST /api/v1/products       - 상품 생성");
     console.log("   GET  /api/v1/products       - 상품 목록 조회");
     console.log("   GET  /api/v1/products/:id   - 상품 상세 조회");
-  }
-
-  /**
-   * 테스트용 라우트 설정 (개발 환경에서만)
-   */
-  private setupTestRoutes(): void {
-    if (process.env.NODE_ENV === "development") {
-      // 데이터베이스 연결 테스트
-      this.app.get("/test/database", async (req, res) => {
-        try {
-          const container = DIContainer.getContainer();
-          const dataSource = container.get<DataSource>(TYPES.DataSource);
-
-          const result = await dataSource.query("SELECT NOW() as current_time");
-
-          res.json({
-            status: "success",
-            message: "데이터베이스 연결 성공",
-            data: result[0],
-            timestamp: new Date().toISOString(),
-          });
-        } catch (error) {
-          console.error("❌ [Database Test] 오류:", error);
-          res.status(500).json({
-            status: "error",
-            message: "데이터베이스 연결 실패",
-            error: error instanceof Error ? error.message : "Unknown error",
-          });
-        }
-      });
-
-      // Redis 연결 테스트
-      this.app.get("/test/redis", async (req, res) => {
-        try {
-          const container = DIContainer.getContainer();
-          const cacheService = container.get<any>(TYPES.CacheService);
-
-          // 테스트 데이터 저장 및 조회
-          const testKey = "test:connection";
-          const testData = {
-            message: "Redis 연결 테스트",
-            timestamp: new Date().toISOString(),
-          };
-
-          await cacheService.set(testKey, testData, 60); // 1분 TTL
-          const retrievedData = await cacheService.get(testKey);
-
-          res.json({
-            status: "success",
-            message: "Redis 연결 성공",
-            data: {
-              stored: testData,
-              retrieved: retrievedData,
-            },
-            timestamp: new Date().toISOString(),
-          });
-        } catch (error) {
-          console.error("❌ [Redis Test] 오류:", error);
-          res.status(500).json({
-            status: "error",
-            message: "Redis 연결 실패",
-            error: error instanceof Error ? error.message : "Unknown error",
-          });
-        }
-      });
-
-      // Repository 테스트
-      this.app.get("/test/repository/categories", async (req, res) => {
-        try {
-          const container = DIContainer.getContainer();
-          const categoryRepository = container.get<any>(
-            TYPES.CategoryRepository
-          );
-
-          // 루트 카테고리들 조회
-          const categories = await categoryRepository.findRootCategories();
-
-          res.json({
-            status: "success",
-            message: "카테고리 Repository 테스트 성공",
-            data: {
-              count: categories.length,
-              categories: categories.map((cat: any) => ({
-                id: cat.getId(),
-                name: cat.getName(),
-                slug: cat.getSlug(),
-                depth: cat.getDepth(),
-              })),
-            },
-            timestamp: new Date().toISOString(),
-          });
-        } catch (error) {
-          console.error("❌ [Repository Test] 오류:", error);
-          res.status(500).json({
-            status: "error",
-            message: "Repository 테스트 실패",
-            error: error instanceof Error ? error.message : "Unknown error",
-          });
-        }
-      });
-
-      console.log("🧪 [ProductService] 개발용 테스트 라우트 활성화됨");
-    }
   }
 
   /**
@@ -321,6 +328,13 @@ class ProductServiceApp {
         );
         console.log(
           `📍 [ProductService] API Info: http://localhost:${this.PORT}/`
+        );
+        // 🚀 Swagger 링크 추가
+        console.log(
+          `📚 [ProductService] API Docs: http://localhost:${this.PORT}/api/docs`
+        );
+        console.log(
+          `📄 [ProductService] API Spec: http://localhost:${this.PORT}/api/docs/json`
         );
 
         if (process.env.NODE_ENV === "development") {

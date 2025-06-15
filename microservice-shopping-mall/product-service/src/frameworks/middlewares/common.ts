@@ -141,3 +141,173 @@ export function healthCheckHandler(req: Request, res: Response): void {
 
   res.status(200).json(response);
 }
+
+/**
+ * @swagger
+ * /health:
+ *   get:
+ *     tags: [Health]
+ *     summary: 서비스 상태 확인
+ *     description: |
+ *       Product Service의 현재 상태와 시스템 정보를 반환합니다.
+ *       
+ *       **확인 항목:**
+ *       - 서비스 실행 상태
+ *       - 메모리 사용량
+ *       - 서버 가동 시간
+ *       - 환경 설정 정보
+ *       
+ *       **용도:**
+ *       - 로드 밸런서 헬스 체크
+ *       - 모니터링 시스템 연동
+ *       - 서비스 상태 확인
+ *     responses:
+ *       200:
+ *         description: 서비스가 정상적으로 작동중입니다
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                   description: 요청 성공 여부
+ *                 message:
+ *                   type: string
+ *                   example: "Product Service is healthy"
+ *                   description: 상태 메시지
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     service:
+ *                       type: string
+ *                       example: "product-service"
+ *                       description: 서비스 이름
+ *                     version:
+ *                       type: string
+ *                       example: "1.0.0"
+ *                       description: 서비스 버전
+ *                     environment:
+ *                       type: string
+ *                       example: "development"
+ *                       description: 실행 환경
+ *                     timestamp:
+ *                       type: string
+ *                       format: date-time
+ *                       example: "2025-06-15T12:46:46.522Z"
+ *                       description: 응답 시간
+ *                     uptime:
+ *                       type: number
+ *                       example: 300.93
+ *                       description: 서버 가동 시간(초)
+ *                     memory:
+ *                       type: object
+ *                       properties:
+ *                         used:
+ *                           type: number
+ *                           example: 28
+ *                           description: 사용중인 메모리(MB)
+ *                         total:
+ *                           type: number
+ *                           example: 30
+ *                           description: 전체 메모리(MB)
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                   example: "2025-06-15T12:46:46.522Z"
+ *                   description: 응답 생성 시간
+ *                 requestId:
+ *                   type: string
+ *                   example: "abc-123-def"
+ *                   description: 요청 추적 ID
+ *             examples:
+ *               healthy:
+ *                 summary: 정상 상태
+ *                 value:
+ *                   success: true
+ *                   message: "Product Service is healthy"
+ *                   data:
+ *                     service: "product-service"
+ *                     version: "1.0.0"
+ *                     environment: "development"
+ *                     timestamp: "2025-06-15T12:46:46.522Z"
+ *                     uptime: 300.93
+ *                     memory:
+ *                       used: 28
+ *                       total: 30
+ *                   timestamp: "2025-06-15T12:46:46.522Z"
+ *                   requestId: "abc-123-def"
+
+/**
+ * @swagger
+ * /api:
+ *   get:
+ *     tags: [Health]
+ *     summary: API 서비스 정보
+ *     description: |
+ *       Product Service API의 기본 정보와 사용 가능한 엔드포인트를 반환합니다.
+ *       
+ *       **포함 정보:**
+ *       - 서비스 기본 정보
+ *       - 사용 가능한 API 엔드포인트 목록
+ *       - 서비스 주요 기능
+ *       - API 문서 링크
+ *     responses:
+ *       200:
+ *         description: API 정보 조회 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Product Service API"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     service:
+ *                       type: string
+ *                       example: "product-service"
+ *                     version:
+ *                       type: string
+ *                       example: "1.0.0"
+ *                     description:
+ *                       type: string
+ *                       example: "Clean Architecture 기반 상품 관리 마이크로서비스"
+ *                     endpoints:
+ *                       type: object
+ *                       properties:
+ *                         products:
+ *                           type: string
+ *                           example: "/api/v1/products"
+ *                         health:
+ *                           type: string
+ *                           example: "/health"
+ *                         docs:
+ *                           type: string
+ *                           example: "/api/docs"
+ *                         spec:
+ *                           type: string
+ *                           example: "/api/docs/json"
+ *                     features:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                       example:
+ *                         - "상품 생성/조회/목록"
+ *                         - "카테고리 기반 분류"
+ *                         - "재고 관리 연동"
+ *                         - "검색 및 필터링"
+ *                         - "캐시 최적화"
+ *                         - "📚 Swagger API 문서화"
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                 requestId:
+ *                   type: string
+ */
