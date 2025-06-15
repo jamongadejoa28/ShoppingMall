@@ -16,9 +16,9 @@ import { DIContainer } from "./infrastructure/di/Container";
 import { TYPES } from "./infrastructure/di/types";
 // 기존 imports 뒤에 추가
 import {
-    errorHandlingMiddleware,
-    healthCheckHandler,
-    notFoundHandler,
+  errorHandlingMiddleware,
+  healthCheckHandler,
+  notFoundHandler,
 } from "./frameworks/middlewares/common";
 import { createProductRoutes } from "./frameworks/routes/productRoutes";
 
@@ -297,7 +297,7 @@ class ProductServiceApp {
    */
   private setupErrorHandling(): void {
     // 404 Not Found
-    this.app.use(notFoundHandler  );
+    this.app.use(notFoundHandler);
 
     // Global Error Handler
     this.app.use(errorHandlingMiddleware);

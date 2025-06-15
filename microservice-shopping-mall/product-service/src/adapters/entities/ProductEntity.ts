@@ -69,7 +69,7 @@ export class ProductEntity {
   })
   weight?: number;
 
-  // JSON 컬럼으로 dimensions 저장
+  // ✅ 수정된 dimensions 컬럼
   @Column({
     type: "jsonb",
     nullable: true,
@@ -77,7 +77,19 @@ export class ProductEntity {
       to: (
         value: { width: number; height: number; depth: number } | undefined
       ) => (value ? JSON.stringify(value) : null),
-      from: (value: string | null) => (value ? JSON.parse(value) : undefined),
+      from: (value: string | object | null) => {
+        // ✅ 이미 객체인 경우 그대로 반환 (PostgreSQL에서 이미 파싱됨)
+        if (value === null || value === undefined) return undefined;
+        if (typeof value === "object") return value;
+        if (typeof value === "string") {
+          try {
+            return JSON.parse(value);
+          } catch {
+            return undefined;
+          }
+        }
+        return undefined;
+      },
     },
   })
   dimensions?: {
@@ -86,14 +98,27 @@ export class ProductEntity {
     depth: number;
   };
 
-  // 태그들을 배열로 저장
+  // ✅ 수정된 tags 컬럼
   @Column({
     type: "jsonb",
     nullable: true,
     default: "[]",
     transformer: {
       to: (value: string[] = []) => JSON.stringify(value),
-      from: (value: string | null) => (value ? JSON.parse(value) : []),
+      from: (value: string | string[] | null) => {
+        // ✅ 이미 배열인 경우 그대로 반환 (PostgreSQL에서 이미 파싱됨)
+        if (value === null || value === undefined) return [];
+        if (Array.isArray(value)) return value;
+        if (typeof value === "string") {
+          try {
+            const parsed = JSON.parse(value);
+            return Array.isArray(parsed) ? parsed : [];
+          } catch {
+            return [];
+          }
+        }
+        return [];
+      },
     },
   })
   tags!: string[];

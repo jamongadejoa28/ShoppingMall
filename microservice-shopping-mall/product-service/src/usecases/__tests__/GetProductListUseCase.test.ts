@@ -4,10 +4,12 @@ import { GetProductListUseCase } from "../GetProductListUseCase";
 import { Product } from "../../entities/Product";
 import { Category } from "../../entities/Category";
 import { Inventory } from "../../entities/Inventory";
-import { ProductRepository } from "../../repositories/ProductRepository";
-import { CategoryRepository } from "../../repositories/CategoryRepository";
-import { InventoryRepository } from "../../repositories/InventoryRepository";
-import { CacheService } from "../../services/CacheService";
+import {
+  ProductRepository,
+  CategoryRepository,
+  InventoryRepository,
+  CacheService,
+} from "../types";
 import { DomainError } from "../../shared/errors/DomainError";
 
 // Mock implementations
@@ -32,80 +34,155 @@ class MockProductRepository implements ProductRepository {
     return product;
   }
 
+  // ✅ 추가: update 메서드
+  async update(product: Product): Promise<Product> {
+    if (!this.products.has(product.getId())) {
+      throw new Error("Product not found");
+    }
+    this.products.set(product.getId(), product);
+    return product;
+  }
+
+  // ✅ 추가: delete 메서드
+  async delete(id: string): Promise<void> {
+    this.products.delete(id);
+  }
+
   async findByCategory(
     categoryId: string,
-    limit?: number,
-    offset?: number
-  ): Promise<Product[]> {
+    options?: {
+      page?: number;
+      limit?: number;
+      sortBy?: string;
+      sortOrder?: "asc" | "desc";
+    }
+  ): Promise<{ products: Product[]; total: number }> {
     const results: Product[] = [];
     for (const product of this.products.values()) {
       if (product.getCategoryId() === categoryId && product.isActive()) {
         results.push(product);
       }
     }
-    return results.slice(
-      offset || 0,
-      (offset || 0) + (limit || results.length)
-    );
+
+    const page = options?.page || 1;
+    const limit = options?.limit || 20;
+    const offset = (page - 1) * limit;
+
+    const paginatedResults = results.slice(offset, offset + limit);
+
+    return {
+      products: paginatedResults,
+      total: results.length,
+    };
   }
 
-  async search(
-    query: string,
-    filters?: any,
-    limit?: number,
-    offset?: number
-  ): Promise<Product[]> {
+  async search(options: {
+    search?: string;
+    categoryId?: string;
+    brand?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    page?: number;
+    limit?: number;
+    sortBy?: string;
+    sortOrder?: "asc" | "desc";
+    isActive?: boolean;
+  }): Promise<{ products: Product[]; total: number }> {
     const results: Product[] = [];
+
     for (const product of this.products.values()) {
-      if (!product.isActive()) continue;
+      // 활성 상품 필터
+      if (options.isActive && !product.isActive()) continue;
 
-      const matchesSearch =
-        query === "" ||
-        product.getName().toLowerCase().includes(query.toLowerCase()) ||
-        product.getDescription().toLowerCase().includes(query.toLowerCase()) ||
-        product.getBrand().toLowerCase().includes(query.toLowerCase()) ||
-        product
-          .getTags()
-          .some((tag) => tag.toLowerCase().includes(query.toLowerCase()));
-
-      const matchesCategory =
-        !filters?.categoryId || product.getCategoryId() === filters.categoryId;
-      const matchesBrand =
-        !filters?.brand ||
-        product.getBrand().toLowerCase() === filters.brand.toLowerCase();
-      const matchesPrice =
-        (!filters?.minPrice || product.getPrice() >= filters.minPrice) &&
-        (!filters?.maxPrice || product.getPrice() <= filters.maxPrice);
-
-      if (matchesSearch && matchesCategory && matchesBrand && matchesPrice) {
-        results.push(product);
+      // 검색어 필터
+      if (options.search) {
+        const searchTerm = options.search.toLowerCase();
+        const matchesSearch =
+          product.getName().toLowerCase().includes(searchTerm) ||
+          product.getDescription().toLowerCase().includes(searchTerm) ||
+          product.getBrand().toLowerCase().includes(searchTerm);
+        if (!matchesSearch) continue;
       }
+
+      // 카테고리 필터
+      if (
+        options.categoryId &&
+        product.getCategoryId() !== options.categoryId
+      ) {
+        continue;
+      }
+
+      // 브랜드 필터
+      if (
+        options.brand &&
+        product.getBrand().toLowerCase() !== options.brand.toLowerCase()
+      ) {
+        continue;
+      }
+
+      // 가격 범위 필터
+      if (
+        options.minPrice !== undefined &&
+        product.getPrice() < options.minPrice
+      ) {
+        continue;
+      }
+      if (
+        options.maxPrice !== undefined &&
+        product.getPrice() > options.maxPrice
+      ) {
+        continue;
+      }
+
+      results.push(product);
     }
 
-    // 정렬 처리
-    if (filters?.sortBy) {
+    // 정렬
+    if (options.sortBy) {
       results.sort((a, b) => {
-        switch (filters.sortBy) {
-          case "price_asc":
-            return a.getPrice() - b.getPrice();
-          case "price_desc":
-            return b.getPrice() - a.getPrice();
+        let comparison = 0;
+
+        switch (options.sortBy) {
+          case "name":
           case "name_asc":
-            return a.getName().localeCompare(b.getName());
           case "name_desc":
-            return b.getName().localeCompare(a.getName());
+            comparison = a.getName().localeCompare(b.getName());
+            break;
+          case "price":
+          case "price_asc":
+          case "price_desc":
+            comparison = a.getPrice() - b.getPrice();
+            break;
+          case "createdAt":
           case "created_desc":
-            return b.getCreatedAt().getTime() - a.getCreatedAt().getTime();
           default:
-            return 0;
+            comparison =
+              a.getCreatedAt().getTime() - b.getCreatedAt().getTime();
+            break;
         }
+
+        // 내림차순인 경우 반전
+        if (
+          options.sortBy?.includes("desc") ||
+          (options.sortOrder === "desc" && !options.sortBy?.includes("asc"))
+        ) {
+          comparison = -comparison;
+        }
+
+        return comparison;
       });
     }
 
-    return results.slice(
-      offset || 0,
-      (offset || 0) + (limit || results.length)
-    );
+    // 페이징
+    const page = options.page || 1;
+    const limit = options.limit || 20;
+    const offset = (page - 1) * limit;
+    const paginatedResults = results.slice(offset, offset + limit);
+
+    return {
+      products: paginatedResults,
+      total: results.length,
+    };
   }
 
   // Test helper method
@@ -157,6 +234,20 @@ class MockCategoryRepository implements CategoryRepository {
     return category;
   }
 
+  // ✅ 추가: update 메서드
+  async update(category: Category): Promise<Category> {
+    if (!this.categories.has(category.getId())) {
+      throw new Error("Category not found");
+    }
+    this.categories.set(category.getId(), category);
+    return category;
+  }
+
+  // ✅ 추가: delete 메서드
+  async delete(id: string): Promise<void> {
+    this.categories.delete(id);
+  }
+
   async findChildren(parentId: string): Promise<Category[]> {
     const results: Category[] = [];
     for (const category of this.categories.values()) {
@@ -177,6 +268,52 @@ class MockCategoryRepository implements CategoryRepository {
     return results;
   }
 
+  // ✅ 추가: findPath 메서드
+  async findPath(categoryId: string): Promise<Category[]> {
+    const path: Category[] = [];
+    let currentCategory = await this.findById(categoryId);
+
+    while (currentCategory) {
+      path.unshift(currentCategory); // 앞에 추가하여 루트부터 순서대로
+      const parentId = currentCategory.getParentId();
+      if (!parentId) break;
+      currentCategory = await this.findById(parentId);
+    }
+
+    return path;
+  }
+
+  // ✅ 추가: findAll 메서드
+  async findAll(options?: {
+    parentId?: string;
+    isActive?: boolean;
+    depth?: number;
+  }): Promise<Category[]> {
+    const results: Category[] = [];
+
+    for (const category of this.categories.values()) {
+      // parentId 필터
+      if (options?.parentId !== undefined) {
+        if (category.getParentId() !== options.parentId) continue;
+      }
+
+      // isActive 필터 (Category에 isActive 메서드가 있다고 가정)
+      if (options?.isActive !== undefined) {
+        // Category 엔티티에 isActive 메서드가 있는지 확인 필요
+        // 없다면 이 부분은 제거하거나 다른 방식으로 구현
+      }
+
+      // depth 필터
+      if (options?.depth !== undefined) {
+        if (category.getDepth() !== options.depth) continue;
+      }
+
+      results.push(category);
+    }
+
+    return results;
+  }
+
   // Test helper method
   addCategory(category: Category): void {
     this.categories.set(category.getId(), category);
@@ -193,6 +330,33 @@ class MockInventoryRepository implements InventoryRepository {
   async save(inventory: Inventory): Promise<Inventory> {
     this.inventories.set(inventory.getProductId(), inventory);
     return inventory;
+  }
+
+  // ✅ 추가: update 메서드
+  async update(inventory: Inventory): Promise<Inventory> {
+    const productId = inventory.getProductId();
+    if (!this.inventories.has(productId)) {
+      throw new Error("Inventory not found");
+    }
+    this.inventories.set(productId, inventory);
+    return inventory;
+  }
+
+  // ✅ 추가: delete 메서드
+  async delete(id: string): Promise<void> {
+    // productId 기준으로 삭제
+    this.inventories.delete(id);
+  }
+
+  // ✅ 추가: findByLocation 메서드
+  async findByLocation(location: string): Promise<Inventory[]> {
+    const results: Inventory[] = [];
+    for (const inventory of this.inventories.values()) {
+      if (inventory.getLocation() === location) {
+        results.push(inventory);
+      }
+    }
+    return results;
   }
 
   async findLowStock(threshold: number): Promise<Inventory[]> {
@@ -238,6 +402,26 @@ class MockCacheService implements CacheService {
 
   async exists(key: string): Promise<boolean> {
     return this.cache.has(key);
+  }
+
+  // ✅ 추가: invalidatePattern 메서드
+  async invalidatePattern(pattern: string): Promise<void> {
+    // 패턴 매칭으로 캐시 키 삭제
+    // 간단한 와일드카드 패턴 지원 (*, ?)
+    const regex = new RegExp(
+      pattern
+        .replace(/\*/g, ".*") // * -> .*
+        .replace(/\?/g, ".") // ? -> .
+    );
+
+    const keysToDelete: string[] = [];
+    for (const key of this.cache.keys()) {
+      if (regex.test(key)) {
+        keysToDelete.push(key);
+      }
+    }
+
+    keysToDelete.forEach((key) => this.cache.delete(key));
   }
 
   // Test helper method
@@ -890,8 +1074,14 @@ describe("GetProductListUseCase", () => {
 
       // Then
       expect(result.success).toBe(false);
-      expect(result.error).toBeInstanceOf(Error);
-      expect(result.error?.message).toBe("Database error");
+      expect(result.error).toBeInstanceOf(DomainError);
+      // ✅ 수정: UseCase에서 감싸서 반환하는 메시지로 변경
+      if (result.error instanceof DomainError) {
+        expect(result.error.code).toBe("INTERNAL_ERROR");
+        expect(result.error.message).toBe(
+          "상품 목록 조회 중 오류가 발생했습니다"
+        );
+      }
     });
   });
 });

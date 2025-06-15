@@ -4,12 +4,16 @@ import { injectable, inject } from "inversify";
 import { Product } from "../entities/Product";
 import { Category } from "../entities/Category";
 import { Inventory } from "../entities/Inventory";
-import { ProductRepository } from "../repositories/ProductRepository";
-import { CategoryRepository } from "../repositories/CategoryRepository";
-import { InventoryRepository } from "../repositories/InventoryRepository";
-import { CacheService } from "../services/CacheService";
-import { DomainError } from "../shared/errors/DomainError";
+// ✅ 수정: shared/types/Result 클래스 사용
 import { Result } from "../shared/types/Result";
+// ✅ 수정: Repository는 usecases/types에서 import
+import {
+  ProductRepository,
+  CategoryRepository,
+  InventoryRepository,
+  CacheService
+} from "./types";
+import { DomainError } from "../shared/errors/DomainError";
 import { TYPES } from "../infrastructure/di/types";
 
 // 상품 목록 조회 요청 DTO
@@ -29,14 +33,14 @@ export interface GetProductListRequest {
     | "created_desc";
 }
 
-// 상품 목록 응답 DTO
+// 상품 목록 응답 DTO - exactOptionalPropertyTypes 대응
 export interface ProductListResponse {
   products: Array<{
     id: string;
     name: string;
     description: string;
     price: number;
-    discountPrice?: number;
+    discountPrice?: number | undefined; // ✅ 명시적 undefined 타입
     sku: string;
     brand: string;
     tags: string[];
@@ -60,14 +64,16 @@ export interface ProductListResponse {
     hasPreviousPage: boolean;
   };
   filters: {
-    appliedCategory?: string;
-    appliedSearch?: string;
-    appliedBrand?: string;
-    appliedPriceRange?: {
-      min?: number;
-      max?: number;
-    };
-    appliedSortBy?: string;
+    appliedCategory?: string | undefined;
+    appliedSearch?: string | undefined;
+    appliedBrand?: string | undefined;
+    appliedPriceRange?:
+      | {
+          min?: number | undefined;
+          max?: number | undefined;
+        }
+      | undefined;
+    appliedSortBy?: string | undefined;
   };
 }
 
@@ -105,232 +111,341 @@ export class GetProductListUseCase {
       // 1. 입력값 유효성 검증
       const validationError = this.validateInput(request);
       if (validationError) {
-        return Result.fail(validationError);
+        // ✅ 수정: DomainError 객체 전달
+        return Result.fail(new DomainError(validationError, "INVALID_INPUT"));
       }
 
-      // 2. 기본값 설정
-      const page = request.page || this.DEFAULT_PAGE;
-      const limit = request.limit || this.DEFAULT_LIMIT;
-      const offset = (page - 1) * limit;
+      // 2. 정규화된 파라미터 생성
+      const normalizedParams = this.normalizeParameters(request);
 
-      // 3. 캐시 키 생성
-      const cacheKey = this.generateCacheKey(request);
-      const cachedData =
-        await this.cacheService.get<ProductListResponse>(cacheKey);
-
-      if (cachedData) {
-        return Result.ok(cachedData);
+      // 3. 캐시 확인 시도
+      const cacheKey = this.buildCacheKey(normalizedParams);
+      try {
+        const cachedResult =
+          await this.cacheService.get<ProductListResponse>(cacheKey);
+        if (cachedResult) {
+          return Result.ok(cachedResult);
+        }
+      } catch (cacheError) {
+        // 캐시 오류는 무시하고 계속 진행
+        console.warn("캐시 조회 실패:", cacheError);
       }
 
-      // 4. 검색 필터 준비
-      const filters: SearchFilters = {};
-      if (request.categoryId) filters.categoryId = request.categoryId;
-      if (request.brand) filters.brand = request.brand;
-      if (request.minPrice !== undefined) filters.minPrice = request.minPrice;
-      if (request.maxPrice !== undefined) filters.maxPrice = request.maxPrice;
-      if (request.sortBy) filters.sortBy = request.sortBy;
+      // 4. 데이터베이스에서 상품 조회 - ✅ undefined 값 필터링
+      const searchOptions: any = {
+        page: normalizedParams.page,
+        limit: normalizedParams.limit,
+        sortBy: normalizedParams.sortBy,
+        sortOrder: this.extractSortOrder(normalizedParams.sortBy) as
+          | "asc"
+          | "desc",
+        isActive: true, // 활성 상품만 조회
+      };
 
-      // 5. 상품 목록 조회
-      const products = await this.productRepository.search(
-        request.search || "",
-        filters,
-        limit,
-        offset
-      );
+      // undefined 값들을 제거하여 exactOptionalPropertyTypes 문제 해결
+      if (normalizedParams.search)
+        searchOptions.search = normalizedParams.search;
+      if (normalizedParams.categoryId)
+        searchOptions.categoryId = normalizedParams.categoryId;
+      if (normalizedParams.brand) searchOptions.brand = normalizedParams.brand;
+      if (normalizedParams.minPrice !== undefined)
+        searchOptions.minPrice = normalizedParams.minPrice;
+      if (normalizedParams.maxPrice !== undefined)
+        searchOptions.maxPrice = normalizedParams.maxPrice;
 
-      // 6. 총 개수 조회 (페이지네이션용)
-      const totalItems = await this.getTotalCount(
-        request.search || "",
-        filters
-      );
+      const { products, total } =
+        await this.productRepository.search(searchOptions);
 
-      // 7. 상품별 상세 정보 보강 (카테고리, 재고)
+      // 5. 상품 세부 정보 보강 (카테고리, 재고 정보)
       const enrichedProducts = await this.enrichProductsWithDetails(products);
 
-      // 8. 응답 데이터 구성
-      const responseData = this.buildResponse(
+      // 6. 응답 데이터 구성
+      const response = this.buildResponse(
         enrichedProducts,
-        page,
-        limit,
-        totalItems,
+        total,
+        normalizedParams,
         request
       );
 
-      // 9. 캐시에 저장
-      await this.cacheService.set(cacheKey, responseData, this.CACHE_TTL);
+      // 7. 캐시 저장 시도
+      try {
+        await this.cacheService.set(cacheKey, response, this.CACHE_TTL);
+      } catch (cacheError) {
+        // 캐시 저장 오류는 무시
+        console.warn("캐시 저장 실패:", cacheError);
+      }
 
-      return Result.ok(responseData);
+      return Result.ok(response);
     } catch (error) {
-      if (error instanceof Error) {
+      console.error("GetProductListUseCase 실행 오류:", error);
+
+      if (error instanceof DomainError) {
         return Result.fail(error);
       }
+
       return Result.fail(
-        new Error("상품 목록 조회 중 예상치 못한 오류가 발생했습니다")
+        new DomainError(
+          "상품 목록 조회 중 오류가 발생했습니다",
+          "INTERNAL_ERROR"
+        )
       );
     }
   }
 
-  private validateInput(request: GetProductListRequest): DomainError | null {
-    // 페이지 유효성 검증
-    if (request.page !== undefined && request.page <= 0) {
-      return DomainError.invalidInput("페이지는 1 이상이어야 합니다");
+  /**
+   * 입력값 유효성 검증
+   */
+  private validateInput(request: GetProductListRequest): string | null {
+    // 페이지 번호 검증
+    if (request.page !== undefined && request.page < 1) {
+      return "페이지 번호는 1 이상이어야 합니다";
     }
 
-    // 제한 개수 유효성 검증
+    // 페이지 크기 검증
     if (request.limit !== undefined) {
-      if (request.limit <= 0) {
-        return DomainError.invalidInput("제한 개수는 1 이상이어야 합니다");
+      if (request.limit < 1) {
+        return "페이지 크기는 1 이상이어야 합니다";
       }
       if (request.limit > this.MAX_LIMIT) {
-        return DomainError.invalidInput(
-          `제한 개수는 ${this.MAX_LIMIT}개 이하여야 합니다`
-        );
+        return `페이지 크기는 ${this.MAX_LIMIT} 이하여야 합니다`;
       }
     }
 
-    // 가격 유효성 검증
+    // 가격 범위 검증
     if (request.minPrice !== undefined && request.minPrice < 0) {
-      return DomainError.invalidInput("최소 가격은 0 이상이어야 합니다");
+      return "최소 가격은 0 이상이어야 합니다";
     }
 
     if (request.maxPrice !== undefined && request.maxPrice < 0) {
-      return DomainError.invalidInput("최대 가격은 0 이상이어야 합니다");
+      return "최대 가격은 0 이상이어야 합니다";
     }
 
-    if (request.minPrice !== undefined && request.maxPrice !== undefined) {
-      if (request.minPrice > request.maxPrice) {
-        return DomainError.invalidInput(
-          "최소 가격은 최대 가격보다 클 수 없습니다"
-        );
-      }
+    if (
+      request.minPrice !== undefined &&
+      request.maxPrice !== undefined &&
+      request.minPrice > request.maxPrice
+    ) {
+      return "최소 가격은 최대 가격보다 작거나 같아야 합니다";
+    }
+
+    // 검색어 길이 검증
+    if (request.search !== undefined && request.search.trim().length > 100) {
+      return "검색어는 100자 이하여야 합니다";
     }
 
     return null;
   }
 
-  private generateCacheKey(request: GetProductListRequest): string {
+  /**
+   * 입력 파라미터 정규화
+   */
+  private normalizeParameters(request: GetProductListRequest) {
+    return {
+      page: Math.max(1, request.page || this.DEFAULT_PAGE),
+      limit: Math.min(
+        this.MAX_LIMIT,
+        Math.max(1, request.limit || this.DEFAULT_LIMIT)
+      ),
+      categoryId: request.categoryId?.trim() || undefined,
+      search: request.search?.trim() || undefined,
+      brand: request.brand?.trim() || undefined,
+      minPrice: request.minPrice || undefined,
+      maxPrice: request.maxPrice || undefined,
+      sortBy: request.sortBy || "created_desc",
+    };
+  }
+
+  /**
+   * 정렬 순서 추출
+   */
+  private extractSortOrder(sortBy?: string): string {
+    if (!sortBy) return "desc";
+
+    if (sortBy.endsWith("_asc")) return "asc";
+    if (sortBy.endsWith("_desc")) return "desc";
+
+    return "desc"; // 기본값
+  }
+
+  /**
+   * 캐시 키 생성
+   */
+  private buildCacheKey(params: any): string {
     const keyParts = [
       this.CACHE_KEY_PREFIX,
-      `page:${request.page || this.DEFAULT_PAGE}`,
-      `limit:${request.limit || this.DEFAULT_LIMIT}`,
-      request.categoryId ? `cat:${request.categoryId}` : "",
-      request.search ? `search:${request.search}` : "",
-      request.brand ? `brand:${request.brand}` : "",
-      request.minPrice ? `minPrice:${request.minPrice}` : "",
-      request.maxPrice ? `maxPrice:${request.maxPrice}` : "",
-      request.sortBy ? `sort:${request.sortBy}` : "",
-    ]
-      .filter(Boolean)
-      .join("|");
+      `page:${params.page}`,
+      `limit:${params.limit}`,
+      `sort:${params.sortBy}`,
+    ];
 
-    return keyParts;
+    if (params.categoryId) keyParts.push(`category:${params.categoryId}`);
+    if (params.search) keyParts.push(`search:${params.search}`);
+    if (params.brand) keyParts.push(`brand:${params.brand}`);
+    if (params.minPrice) keyParts.push(`minPrice:${params.minPrice}`);
+    if (params.maxPrice) keyParts.push(`maxPrice:${params.maxPrice}`);
+
+    return keyParts.join(":");
   }
 
-  private async getTotalCount(
-    search: string,
-    filters: SearchFilters
-  ): Promise<number> {
-    // ProductRepository의 countProducts 메서드가 없는 경우 search로 대체
-    // 실제로는 별도 count 메서드가 있어야 성능상 좋음
-    const allProducts = await this.productRepository.search(
-      search,
-      filters,
-      999999,
-      0
-    );
-    return allProducts.length;
-  }
+  /**
+   * 상품 정보 보강 - 카테고리 및 재고 정보 추가
+   * ✅ getSlug() 메서드 제거하고 대안 사용
+   */
+  private async enrichProductsWithDetails(products: Product[]): Promise<
+    Array<{
+      id: string;
+      name: string;
+      description: string;
+      price: number;
+      discountPrice?: number | undefined;
+      sku: string;
+      brand: string;
+      tags: string[];
+      slug: string;
+      category: {
+        id: string;
+        name: string;
+        slug: string;
+      };
+      inventory: {
+        availableQuantity: number;
+        status: string;
+      };
+      createdAt: Date;
+    }>
+  > {
+    // ✅ 수정: products가 배열인지 확인
+    if (!products || !Array.isArray(products)) {
+      console.warn("products가 배열이 아닙니다:", products);
+      return [];
+    }
 
-  private async enrichProductsWithDetails(products: Product[]): Promise<any[]> {
     const enrichedProducts = [];
 
     for (const product of products) {
-      // 카테고리 정보 조회
-      const category = await this.categoryRepository.findById(
-        product.getCategoryId()
-      );
-      if (!category) continue; // 카테고리가 없는 상품은 제외
+      try {
+        // 카테고리 정보 조회
+        const category = await this.categoryRepository.findById(
+          product.getCategoryId()
+        );
 
-      // 재고 정보 조회
-      const inventory = await this.inventoryRepository.findByProductId(
-        product.getId()
-      );
+        // 재고 정보 조회
+        const inventory = await this.inventoryRepository.findByProductId(
+          product.getId()
+        );
 
-      const enrichedProduct: any = {
-        id: product.getId(),
-        name: product.getName(),
-        description: product.getDescription(),
-        price: product.getPrice(),
-        sku: product.getSku(),
-        brand: product.getBrand(),
-        tags: product.getTags(),
-        slug: product.generateSlug(),
-        category: {
-          id: category.getId(),
-          name: category.getName(),
-          slug: category.getSlug(),
-        },
-        inventory: {
-          availableQuantity: inventory ? inventory.getAvailableQuantity() : 0,
-          status: inventory ? inventory.getStatus() : "out_of_stock",
-        },
-        createdAt: product.getCreatedAt(),
-      };
+        // ✅ slug 생성 (getSlug 메서드 대신 직접 생성)
+        const slug = this.generateSlug(product.getName());
 
-      // discountPrice가 존재하는 경우에만 추가
-      const discountPrice = product.getDiscountPrice();
-      if (discountPrice !== undefined) {
-        enrichedProduct.discountPrice = discountPrice;
+        enrichedProducts.push({
+          id: product.getId(),
+          name: product.getName(),
+          description: product.getDescription(),
+          price: product.getPrice(),
+          discountPrice: product.getDiscountPrice() || undefined, // ✅ 명시적 undefined
+          sku: product.getSku(),
+          brand: product.getBrand(),
+          tags: product.getTags(),
+          slug: slug,
+          category: {
+            id: category?.getId() || "",
+            name: category?.getName() || "미분류",
+            slug: category
+              ? this.generateSlug(category.getName())
+              : "uncategorized",
+          },
+          inventory: {
+            availableQuantity: inventory?.getAvailableQuantity() || 0,
+            status: inventory?.getStatus() || "out_of_stock",
+          },
+          createdAt: product.getCreatedAt(),
+        });
+      } catch (error) {
+        console.error(`상품 ${product.getId()} 정보 보강 실패:`, error);
+        // 오류가 발생한 상품도 기본 정보로 포함
+        enrichedProducts.push({
+          id: product.getId(),
+          name: product.getName(),
+          description: product.getDescription(),
+          price: product.getPrice(),
+          discountPrice: product.getDiscountPrice() || undefined,
+          sku: product.getSku(),
+          brand: product.getBrand(),
+          tags: product.getTags(),
+          slug: this.generateSlug(product.getName()),
+          category: {
+            id: "",
+            name: "미분류",
+            slug: "uncategorized",
+          },
+          inventory: {
+            availableQuantity: 0,
+            status: "out_of_stock",
+          },
+          createdAt: product.getCreatedAt(),
+        });
       }
-
-      enrichedProducts.push(enrichedProduct);
     }
 
     return enrichedProducts;
   }
 
+  /**
+   * Slug 생성 유틸리티 메서드
+   */
+  private generateSlug(text: string): string {
+    return text
+      .toLowerCase()
+      .replace(/[^a-z0-9가-힣\s-]/g, "") // 특수문자 제거 (한글 유지)
+      .replace(/\s+/g, "-") // 공백을 하이픈으로
+      .replace(/-+/g, "-") // 연속된 하이픈 제거
+      .trim()
+      .replace(/^-|-$/g, ""); // 앞뒤 하이픈 제거
+  }
+
+  /**
+   * 최종 응답 데이터 구성
+   * ✅ exactOptionalPropertyTypes 대응
+   */
   private buildResponse(
-    products: any[],
-    page: number,
-    limit: number,
-    totalItems: number,
+    enrichedProducts: any[],
+    total: number,
+    normalizedParams: any,
     originalRequest: GetProductListRequest
   ): ProductListResponse {
-    const totalPages = Math.ceil(totalItems / limit);
-    const hasNextPage = page < totalPages;
-    const hasPreviousPage = page > 1;
+    const totalPages = Math.ceil(total / normalizedParams.limit);
+    const currentPage = normalizedParams.page;
 
-    const responseFilters: any = {
-      appliedCategory: originalRequest.categoryId,
-      appliedSearch: originalRequest.search,
-      appliedBrand: originalRequest.brand,
-      appliedSortBy: originalRequest.sortBy,
-    };
+    // ✅ undefined 값을 명시적으로 처리
+    const filters: ProductListResponse["filters"] = {};
 
-    // appliedPriceRange 조건부 추가
+    if (originalRequest.categoryId)
+      filters.appliedCategory = originalRequest.categoryId;
+    if (originalRequest.search) filters.appliedSearch = originalRequest.search;
+    if (originalRequest.brand) filters.appliedBrand = originalRequest.brand;
+    if (originalRequest.sortBy) filters.appliedSortBy = originalRequest.sortBy;
+
     if (
       originalRequest.minPrice !== undefined ||
       originalRequest.maxPrice !== undefined
     ) {
-      responseFilters.appliedPriceRange = {};
-      if (originalRequest.minPrice !== undefined) {
-        responseFilters.appliedPriceRange.min = originalRequest.minPrice;
-      }
-      if (originalRequest.maxPrice !== undefined) {
-        responseFilters.appliedPriceRange.max = originalRequest.maxPrice;
-      }
+      filters.appliedPriceRange = {};
+      if (originalRequest.minPrice !== undefined)
+        filters.appliedPriceRange.min = originalRequest.minPrice;
+      if (originalRequest.maxPrice !== undefined)
+        filters.appliedPriceRange.max = originalRequest.maxPrice;
     }
 
     return {
-      products,
+      products: enrichedProducts,
       pagination: {
-        currentPage: page,
+        currentPage,
         totalPages,
-        totalItems,
-        hasNextPage,
-        hasPreviousPage,
+        totalItems: total,
+        hasNextPage: currentPage < totalPages,
+        hasPreviousPage: currentPage > 1,
       },
-      filters: responseFilters,
+      filters,
     };
   }
 }
