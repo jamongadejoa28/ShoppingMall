@@ -14,7 +14,9 @@ export const Header: React.FC = () => {
       await logout();
       navigate(ROUTES.HOME);
     } catch (error) {
-      console.error('로그아웃 실패:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('로그아웃 실패:', error);
+      }
     }
   };
 
@@ -81,7 +83,7 @@ export const Header: React.FC = () => {
                   to={ROUTES.PROFILE}
                   className="text-gray-700 hover:text-primary-600 transition-colors"
                 >
-                  {user?.getDisplayName()}님
+                  {user?.name || '사용자'}님
                 </Link>
                 <button
                   onClick={handleLogout}

@@ -1,5 +1,6 @@
+// src/shared/constants/api.ts
 export const API_BASE_URL =
-  process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+  process.env.REACT_APP_API_URL || 'http://localhost:3003/api';
 
 export const API_ENDPOINTS = {
   // Auth endpoints
@@ -18,10 +19,11 @@ export const API_ENDPOINTS = {
 
   // Product endpoints
   PRODUCTS: {
-    LIST: '/products',
-    DETAIL: (id: string) => `/products/${id}`,
-    CATEGORIES: '/products/categories',
-    RECOMMENDATIONS: (userId: string) => `/products/recommendations/${userId}`,
+    LIST: '/v1/products',
+    DETAIL: (id: string) => `/v1/products/${id}`,
+    CATEGORIES: '/v1/categories',
+    RECOMMENDATIONS: (userId: string) =>
+      `/v1/products/recommendations/${userId}`,
   },
 
   // Order endpoints

@@ -1,11 +1,12 @@
-import { User } from './User';
-import { LoginCredentials, RegisterData, AuthTokens } from '@shared/types/user';
+export interface LoginCredentials {
+  email: string;
+  password: string;
+}
 
 export interface IUserRepository {
-  login(credentials: LoginCredentials): Promise<{ user: User; tokens: AuthTokens }>;
-  register(data: RegisterData): Promise<{ user: User; tokens: AuthTokens }>;
-  getCurrentUser(): Promise<User>;
-  updateProfile(id: string, data: Partial<User>): Promise<User>;
-  refreshToken(refreshToken: string): Promise<AuthTokens>;
-  logout(): Promise<void>;
+  login(credentials: LoginCredentials): Promise<any>;
+  register(userData: any): Promise<any>;
+  findById(id: string): Promise<any>;
+  updateProfile(id: string, data: any): Promise<any>;
+  deleteAccount(id: string): Promise<void>;
 }

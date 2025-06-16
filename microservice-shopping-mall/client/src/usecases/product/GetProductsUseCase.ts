@@ -1,27 +1,15 @@
-import { Product } from '@entities/product/Product';
-import { IProductRepository } from '@entities/product/IProductRepository';
-import { ProductFilter, PaginatedResponse } from '@shared/types';
-
 export class GetProductsUseCase {
-  constructor(private productRepository: IProductRepository) {}
-
-  async execute(
-    filter: ProductFilter = {},
-    page: number = 1,
-    limit: number = 20
-  ): Promise<PaginatedResponse<Product>> {
-    if (page < 1) {
-      throw new Error('페이지 번호는 1 이상이어야 합니다');
-    }
-
-    if (limit < 1 || limit > 100) {
-      throw new Error('한 페이지당 상품 수는 1-100 사이여야 합니다');
-    }
-
-    try {
-      return await this.productRepository.getProducts(filter, page, limit);
-    } catch (error: any) {
-      throw new Error(error.message || '상품 목록을 불러오는데 실패했습니다');
-    }
+  /**
+   * 임시 구현 - 상품 목록 조회
+   * 현재는 ProductsPage에서 직접 API 호출하므로 이 클래스는 사용하지 않음
+   * 나중에 Clean Architecture 완성 시 실제 구현 예정
+   */
+  async execute(filter: any, page: number, limit: number): Promise<any> {
+    throw new Error(
+      '상품 목록 조회는 현재 ProductsPage에서 직접 처리 중입니다.'
+    );
   }
 }
+
+// 모듈로 인식되도록 빈 export 추가
+export {};

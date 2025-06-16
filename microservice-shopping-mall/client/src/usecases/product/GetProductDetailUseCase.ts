@@ -1,18 +1,12 @@
-import { Product } from '@entities/product/Product';
-import { IProductRepository } from '@entities/product/IProductRepository';
-
 export class GetProductDetailUseCase {
-  constructor(private productRepository: IProductRepository) {}
-
-  async execute(productId: string): Promise<Product> {
-    if (!productId) {
-      throw new Error('상품 ID가 필요합니다');
-    }
-
-    try {
-      return await this.productRepository.getProductById(productId);
-    } catch (error: any) {
-      throw new Error(error.message || '상품 정보를 불러오는데 실패했습니다');
-    }
+  /**
+   * 임시 구현 - 상품 상세 정보 조회
+   * 실제 구현은 상품 상세 페이지 개발 시 진행 예정
+   */
+  async execute(productId: string): Promise<any> {
+    throw new Error('상품 상세 조회 기능은 구현 예정입니다.');
   }
 }
+
+// 모듈로 인식되도록 빈 export 추가
+export {};

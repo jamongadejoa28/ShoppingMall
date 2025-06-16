@@ -1,116 +1,34 @@
-import React, { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { yupResolver } from '@hookform/resolvers/yup';
-import { Link, useNavigate } from 'react-router-dom';
-import { useAuthStore } from '@frameworks/state/authStore';
-import { validationSchemas } from '@shared/utils/validation';
-import { ROUTES } from '@shared/constants/routes';
-import { LoadingSpinner } from '@frameworks/ui/components/Common/LoadingSpinner';
-import toast from 'react-hot-toast';
-
-interface LoginFormData {
-  email: string;
-  password: string;
-}
+import React from 'react';
 
 const LoginPage: React.FC = () => {
-  const navigate = useNavigate();
-  const { login, isLoading, error } = useAuthStore();
-
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<LoginFormData>({
-    resolver: yupResolver(validationSchemas.login),
-  });
-
-  const onSubmit = async (data: LoginFormData) => {
-    try {
-      await login(data.email, data.password);
-      toast.success('로그인 성공!');
-      navigate(ROUTES.HOME);
-    } catch (error: any) {
-      toast.error(error.message || '로그인에 실패했습니다');
-    }
-  };
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            로그인
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            아직 계정이 없으신가요?{' '}
-            <Link
-              to={ROUTES.REGISTER}
-              className="font-medium text-blue-600 hover:text-blue-500"
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <h1 className="text-3xl font-bold text-gray-900 mb-8">로그인</h1>
+
+      <div className="bg-white p-8 rounded-lg shadow-sm border border-gray-200">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg
+              className="w-8 h-8 text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              회원가입
-            </Link>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+              />
+            </svg>
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            로그인 기능 구현 예정
+          </h3>
+          <p className="text-gray-600">
+            사용자 서비스와 함께 로그인 기능이 구현될 예정입니다.
           </p>
         </div>
-
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit(onSubmit)}>
-          <div className="space-y-4">
-            <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-gray-700"
-              >
-                이메일
-              </label>
-              <input
-                {...register('email')}
-                type="email"
-                className="input-field w-full mt-1"
-                placeholder="이메일을 입력하세요"
-              />
-              {errors.email && (
-                <p className="mt-1 text-sm text-red-600">
-                  {errors.email.message}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-gray-700"
-              >
-                비밀번호
-              </label>
-              <input
-                {...register('password')}
-                type="password"
-                className="input-field w-full mt-1"
-                placeholder="비밀번호를 입력하세요"
-              />
-              {errors.password && (
-                <p className="mt-1 text-sm text-red-600">
-                  {errors.password.message}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded">
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="btn-primary w-full flex justify-center items-center"
-          >
-            {isLoading ? <LoadingSpinner size="sm" className="mr-2" /> : null}
-            로그인
-          </button>
-        </form>
       </div>
     </div>
   );

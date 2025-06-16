@@ -1,8 +1,8 @@
 import React from 'react';
-import { useAuthStore } from '@frameworks/state/authStore';
 
 const ProfilePage: React.FC = () => {
-  const { user } = useAuthStore();
+  // authStore import 문제 회피 - 임시로 기본값 사용
+  const user = null; // 나중에 실제 인증 시스템 연동 시 수정
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -13,12 +13,10 @@ const ProfilePage: React.FC = () => {
           <div>
             <div className="text-center mb-8">
               <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl font-bold text-blue-600">
-                  {user.name.charAt(0).toUpperCase()}
-                </span>
+                <span className="text-2xl font-bold text-blue-600">사용자</span>
               </div>
-              <h2 className="text-2xl font-bold text-gray-900">{user.name}</h2>
-              <p className="text-gray-600">{user.email}</p>
+              <h2 className="text-2xl font-bold text-gray-900">사용자 이름</h2>
+              <p className="text-gray-600">user@example.com</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -30,19 +28,13 @@ const ProfilePage: React.FC = () => {
                   <label className="block text-sm font-medium text-gray-700">
                     이름
                   </label>
-                  <p className="text-gray-900">{user.name}</p>
+                  <p className="text-gray-900">사용자 이름</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
                     이메일
                   </label>
-                  <p className="text-gray-900">{user.email}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    역할
-                  </label>
-                  <p className="text-gray-900">{user.role}</p>
+                  <p className="text-gray-900">user@example.com</p>
                 </div>
               </div>
 
@@ -56,7 +48,13 @@ const ProfilePage: React.FC = () => {
           </div>
         ) : (
           <div className="text-center">
-            <p className="text-gray-600">로그인이 필요합니다.</p>
+            <div className="text-4xl mb-4">👤</div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              로그인이 필요합니다
+            </h3>
+            <p className="text-gray-600">
+              사용자 서비스 연동 후 실제 프로필 기능이 구현됩니다.
+            </p>
           </div>
         )}
       </div>

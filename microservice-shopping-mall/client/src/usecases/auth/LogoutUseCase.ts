@@ -1,18 +1,18 @@
-import { IUserRepository } from '@entities/user/IUserRepository';
+import { useAuthStore } from '@frameworks/state/authStore';
 
 export class LogoutUseCase {
-  constructor(private userRepository: IUserRepository) {}
+  execute(): void {
+    const { logout } = useAuthStore.getState();
 
-  async execute(): Promise<void> {
-    try {
-      await this.userRepository.logout();
-    } catch (error) {
-      // 로그아웃 API 실패해도 로컬 토큰은 제거
-      console.error('로그아웃 API 호출 실패:', error);
-    } finally {
-      // 로컬 스토리지에서 토큰 제거
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
+    // 로그아웃 처리
+    logout();
+
+    // 개발 환경에서만 로그아웃 처리 로그
+    if (process.env.NODE_ENV === 'development') {
+      console.log('✅ LogoutUseCase executed - User logged out');
     }
+
+    // 추가적인 정리 작업 (토큰 무효화, 캐시 정리 등)
+    // TODO: API 서버에 로그아웃 요청 전송 (토큰 무효화)
   }
 }

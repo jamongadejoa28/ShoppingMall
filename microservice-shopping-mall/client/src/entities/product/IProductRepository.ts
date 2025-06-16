@@ -1,10 +1,16 @@
-import { Product } from './Product';
-import { Category, ProductFilter, PaginatedResponse } from '@shared/types';
+export interface ProductFilter {
+  brand?: string;
+  category?: string;
+  minPrice?: number;
+  maxPrice?: number;
+}
 
 export interface IProductRepository {
-  getProducts(filter: ProductFilter, page: number, limit: number): Promise<PaginatedResponse<Product>>;
-  getProductById(id: string): Promise<Product>;
-  getCategories(): Promise<Category[]>;
-  getRecommendations(userId: string): Promise<Product[]>;
-  searchProducts(query: string, page: number, limit: number): Promise<PaginatedResponse<Product>>;
+  findByFilter(
+    filter: ProductFilter,
+    page: number,
+    limit: number
+  ): Promise<any>;
+  findById(id: string): Promise<any>;
+  search(query: string, page: number, limit: number): Promise<any>;
 }

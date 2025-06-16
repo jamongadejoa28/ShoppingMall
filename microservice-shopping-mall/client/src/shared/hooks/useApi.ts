@@ -1,56 +1,91 @@
-import { useState, useEffect } from 'react';
-import { apiClient } from '@shared/utils/api';
-import { ApiResponse } from '@shared/types';
+import { useState, useEffect, useCallback } from 'react';
+import { apiClient } from '../utils/api';
 
-interface UseApiState<T> {
+interface UseApiOptions {
+  immediate?: boolean;
+  onSuccess?: (data: any) => void;
+  onError?: (error: any) => void;
+}
+
+interface UseApiReturn<T> {
   data: T | null;
   loading: boolean;
   error: string | null;
+  execute: () => Promise<void>;
+  reset: () => void;
 }
 
-export function useApi<T>(
+/**
+ * API 호출을 위한 커스텀 Hook
+ */
+function useApi<T = any>(
   url: string,
-  options?: {
-    immediate?: boolean;
-    dependencies?: any[];
-  }
-): UseApiState<T> & {
-  refetch: () => Promise<void>;
-} {
-  const [state, setState] = useState<UseApiState<T>>({
-    data: null,
-    loading: options?.immediate !== false,
-    error: null,
-  });
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
+  payload?: any,
+  options: UseApiOptions = {}
+): UseApiReturn<T> {
+  const [data, setData] = useState<T | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const fetchData = async () => {
-    setState(prev => ({ ...prev, loading: true, error: null }));
+  const { immediate = false, onSuccess, onError } = options;
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
 
     try {
-      const response = await apiClient.get<ApiResponse<T>>(url);
-      setState({
-        data: response.data.data,
-        loading: false,
-        error: null,
-      });
-    } catch (error: any) {
-      setState({
-        data: null,
-        loading: false,
-        error:
-          error.response?.data?.error || error.message || '오류가 발생했습니다',
-      });
+      let response;
+      switch (method) {
+        case 'GET':
+          response = await apiClient.get(url);
+          break;
+        case 'POST':
+          response = await apiClient.post(url, payload);
+          break;
+        case 'PUT':
+          response = await apiClient.put(url, payload);
+          break;
+        case 'DELETE':
+          response = await apiClient.delete(url);
+          break;
+        default:
+          throw new Error(`Unsupported method: ${method}`);
+      }
+
+      setData(response.data);
+      onSuccess?.(response.data);
+    } catch (err: any) {
+      const errorMessage =
+        err.response?.data?.message ||
+        err.message ||
+        'API 요청 중 오류가 발생했습니다.';
+      setError(errorMessage);
+      onError?.(err);
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [url, method, payload, onSuccess, onError]);
+
+  const reset = useCallback(() => {
+    setData(null);
+    setError(null);
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
-    if (options?.immediate !== false) {
+    if (immediate) {
       fetchData();
     }
-  }, options?.dependencies || []);
+  }, [immediate, fetchData]);
 
   return {
-    ...state,
-    refetch: fetchData,
+    data,
+    loading,
+    error,
+    execute: fetchData,
+    reset,
   };
 }
+
+export default useApi;
