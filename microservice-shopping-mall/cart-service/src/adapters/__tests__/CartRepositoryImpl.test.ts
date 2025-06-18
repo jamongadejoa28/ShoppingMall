@@ -1,6 +1,7 @@
 import { TestDataSource } from "../../infrastructure/database/test-data-source";
 import { Cart } from "../../entities/Cart";
 import { CartRepositoryImpl } from "../CartRepositoryImpl";
+import { TestUtils } from "../../test-utils/TestUtils"; // 추가
 
 /**
  * Repository 통합 테스트 (향상된 버전)
@@ -20,24 +21,37 @@ describe("CartRepositoryImpl Integration Tests (Enhanced)", () => {
   // 테스트 환경 설정 (개선 버전)
   // ========================================
 
+  // 테스트용 ID들을 미리 생성
+  const TEST_USER_ID = TestUtils.generateUserId();
+  const TEST_USER_ID_2 = TestUtils.generateUserId();
+  const TEST_SESSION_ID = TestUtils.generateSessionId();
+  const TEST_SESSION_ID_2 = TestUtils.generateSessionId();
+  const TEST_PRODUCT_ID_1 = TestUtils.generateProductId();
+  const TEST_PRODUCT_ID_2 = TestUtils.generateProductId();
+
   beforeAll(async () => {
+    // ✅ test-setup.ts에서 이미 연결을 관리하므로 중복 초기화 제거
     try {
-      await TestDataSource.initialize();
+      // 연결이 되어있지 않은 경우에만 초기화 (안전장치)
+      if (!TestDataSource.isInitialized) {
+        await TestDataSource.initialize();
+        console.log("✅ Test database connected successfully");
+      } else {
+        console.log("✅ Using existing test database connection");
+      }
+
       repository = new CartRepositoryImpl(TestDataSource);
-      console.log("✅ Test database connected successfully");
     } catch (error) {
-      console.error("❌ Test database connection failed:", error);
+      console.error("❌ Test database setup failed:", error);
       throw error;
     }
   });
 
   afterAll(async () => {
-    try {
-      await TestDataSource.destroy();
-      console.log("✅ Test database disconnected");
-    } catch (error) {
-      console.error("❌ Test database disconnect failed:", error);
-    }
+    // ✅ test-setup.ts에서 연결 해제를 관리하므로 여기서는 하지 않음
+    // Repository 인스턴스만 정리
+    repository = null as any;
+    console.log("✅ Test repository cleanup completed");
   });
 
   beforeEach(async () => {
@@ -59,14 +73,14 @@ describe("CartRepositoryImpl Integration Tests (Enhanced)", () => {
   describe("save() - 장바구니 저장", () => {
     it("새로운 빈 장바구니를 저장할 수 있어야 한다", async () => {
       // Given
-      const cart = Cart.createForSession("test-session-123");
+      const cart = Cart.createForSession(TEST_SESSION_ID);
 
       // When
       const savedCart = await repository.save(cart);
 
       // Then
       expect(savedCart.getId()).toBeDefined();
-      expect(savedCart.getSessionId()).toBe("test-session-123");
+      expect(savedCart.getSessionId()).toBe(TEST_SESSION_ID);
       expect(savedCart.getUserId()).toBeUndefined();
       expect(savedCart.getItems()).toHaveLength(0);
       expect(savedCart.isEmpty()).toBe(true);
@@ -76,35 +90,36 @@ describe("CartRepositoryImpl Integration Tests (Enhanced)", () => {
 
     it("상품이 있는 장바구니를 저장할 수 있어야 한다", async () => {
       // Given
-      const cart = Cart.createForUser("user-123");
-      cart.addItem("product-1", 2, 1000);
-      cart.addItem("product-2", 1, 2000);
+      const cart = Cart.createForUser(TEST_USER_ID);
+      cart.addItem(TEST_PRODUCT_ID_1, 2, 1000);
+      cart.addItem(TEST_PRODUCT_ID_2, 1, 2000);
 
       // When
       const savedCart = await repository.save(cart);
 
       // Then
       expect(savedCart.getId()).toBeDefined();
-      expect(savedCart.getUserId()).toBe("user-123");
+      expect(savedCart.getUserId()).toBe(TEST_USER_ID);
       expect(savedCart.getItems()).toHaveLength(2);
       expect(savedCart.getTotalItems()).toBe(3);
       expect(savedCart.getTotalAmount()).toBe(4000);
 
       // 개별 아이템 검증
       const items = savedCart.getItems();
-      expect(items[0].getProductId()).toBe("product-1");
+      expect(items[0].getProductId()).toBe(TEST_PRODUCT_ID_1);
       expect(items[0].getQuantity()).toBe(2);
       expect(items[0].getPrice()).toBe(1000);
     });
 
     it("기존 장바구니를 업데이트할 수 있어야 한다", async () => {
       // Given - 먼저 저장
-      const cart = Cart.createForSession("session-456");
-      cart.addItem("product-1", 1, 1500);
+      const sessionId = TestUtils.generateSessionId(); // ✅ 새로운 세션 ID 생성
+      const cart = Cart.createForSession(sessionId);
+      cart.addItem(TEST_PRODUCT_ID_1, 1, 1500);
       const savedCart = await repository.save(cart);
 
       // When - 상품 추가 후 다시 저장
-      savedCart.addItem("product-2", 3, 500);
+      savedCart.addItem(TEST_PRODUCT_ID_2, 3, 500);
       const updatedCart = await repository.save(savedCart);
 
       // Then
@@ -117,10 +132,9 @@ describe("CartRepositoryImpl Integration Tests (Enhanced)", () => {
       );
     });
 
-    // ✅ 추가: UUID 유효성 검증
     it("저장된 장바구니의 ID는 유효한 UUID여야 한다", async () => {
       // Given
-      const cart = Cart.createForUser("uuid-test-user");
+      const cart = Cart.createForUser(TEST_USER_ID_2);
 
       // When
       const savedCart = await repository.save(cart);
@@ -135,8 +149,8 @@ describe("CartRepositoryImpl Integration Tests (Enhanced)", () => {
   describe("findById() - ID로 장바구니 조회", () => {
     it("존재하는 장바구니를 조회할 수 있어야 한다", async () => {
       // Given
-      const originalCart = Cart.createForUser("user-789");
-      originalCart.addItem("product-1", 2, 2000);
+      const originalCart = Cart.createForUser(TEST_USER_ID);
+      originalCart.addItem(TEST_PRODUCT_ID_1, 2, 2000);
       const savedCart = await repository.save(originalCart);
 
       // When
@@ -145,7 +159,7 @@ describe("CartRepositoryImpl Integration Tests (Enhanced)", () => {
       // Then
       expect(foundCart).not.toBeNull();
       expect(foundCart!.getId()).toBe(savedCart.getId());
-      expect(foundCart!.getUserId()).toBe("user-789");
+      expect(foundCart!.getUserId()).toBe(TEST_USER_ID);
       expect(foundCart!.getItems()).toHaveLength(1);
       expect(foundCart!.getTotalAmount()).toBe(4000);
     });
@@ -506,24 +520,18 @@ describe("CartRepositoryImpl Integration Tests (Enhanced)", () => {
       // Given - 메모리 사용량 측정
       const initialMemory = process.memoryUsage().heapUsed;
 
-      // 100개의 장바구니, 각각 20개 아이템
-      const carts = [];
+      // ✅ 50개의 장바구니 생성
+      const carts: Cart[] = [];
       for (let i = 0; i < 50; i++) {
-        // 테스트 시간 단축을 위해 50개로 조정
         const cart = Cart.createForUser(`memory-test-user-${i}`);
         for (let j = 0; j < 10; j++) {
-          // 아이템도 10개로 조정
           cart.addItem(
             `product-${i}-${j}`,
             Math.floor(Math.random() * 3) + 1,
             (j + 1) * 100
           );
         }
-        const carts = Array.from({ length: 50 }, (_, i) => {
-          const cart = Cart.createForUser(`memory-test-user-${i}`);
-          cart.addItem(`product-${i}`, Math.floor(Math.random() * 3) + 1, 1000);
-          return cart;
-        });
+        carts.push(cart); // ✅ 배열에 추가
       }
 
       // When - 일괄 저장
@@ -632,16 +640,13 @@ describe("CartRepositoryImpl Integration Tests (Enhanced)", () => {
     it("배치 처리 성능 측정", async () => {
       // Given - 다수의 장바구니 생성
       const batchSize = 20; // 테스트 시간 고려
-      const carts = Array.from({ length: 50 }, (_, i) => {
-        const cart = Cart.createForUser(`memory-test-user-${i}`);
-        cart.addItem(`product-${i}`, Math.floor(Math.random() * 3) + 1, 1000);
-        return cart;
-      });
+      const carts: Cart[] = [];
 
+      // ✅ batchSize만큼 장바구니 생성
       for (let i = 0; i < batchSize; i++) {
         const cart = Cart.createForUser(`batch-user-${i}`);
         cart.addItem(`batch-product-${i}`, i + 1, (i + 1) * 1000);
-        const carts: Cart[] = [];
+        carts.push(cart);
       }
 
       // When - 배치 저장 성능 측정

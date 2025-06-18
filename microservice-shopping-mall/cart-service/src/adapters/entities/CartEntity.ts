@@ -1,5 +1,4 @@
-// cart-service/src/adapters/entities/CartEntity.ts (수정 버전)
-// ========================================
+// src/adapters/entities/CartEntity.ts (최종 수정 버전)
 
 import {
   Entity,
@@ -10,7 +9,7 @@ import {
   UpdateDateColumn,
 } from "typeorm";
 import { Cart } from "../../entities/Cart";
-import { CartItem } from "../../entities/CartItem";
+import { CartItemEntity } from "./CartItemEntity"; // ✅ 직접 import
 
 @Entity("carts")
 export class CartEntity {
@@ -29,23 +28,22 @@ export class CartEntity {
   @UpdateDateColumn({ name: "updated_at" })
   updatedAt!: Date;
 
-  // ✅ 순환 참조 해결: lazy loading 사용
-  @OneToMany(() => require("./CartItemEntity").CartItemEntity, "cart", {
+  // ✅ 관계 설정 개선 - eager loading으로 변경
+  @OneToMany(() => CartItemEntity, (item) => item.cart, {
     cascade: true,
-    lazy: true,
+    eager: true, // ✅ lazy에서 eager로 변경
   })
-  items!: Promise<any[]> | any[];
+  items!: CartItemEntity[];
 
-  // Domain 객체로 변환
+  // ✅ Domain 객체로 변환 (동기적 처리)
   toDomain(): Cart {
-    // items가 Promise인 경우와 배열인 경우 모두 처리
-    const itemsArray = Array.isArray(this.items) ? this.items : [];
-    const cartItems = itemsArray.map((item: any) => item.toDomain());
+    const cartItems = this.items?.map((item) => item.toDomain()) || [];
 
     return new Cart({
       id: this.id,
-      userId: this.userId,
-      sessionId: this.sessionId,
+      // ✅ null을 undefined로 변환
+      userId: this.userId || undefined,
+      sessionId: this.sessionId || undefined,
       items: cartItems,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
@@ -65,7 +63,7 @@ export class CartEntity {
     entity.createdAt = cart.getCreatedAt();
     entity.updatedAt = cart.getUpdatedAt();
 
-    // 아이템들은 Repository에서 별도 처리
+    // ✅ 아이템들은 Repository에서 별도 처리
     entity.items = [];
 
     return entity;

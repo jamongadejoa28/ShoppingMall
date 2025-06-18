@@ -1,5 +1,4 @@
-// cart-service/src/adapters/entities/CartItemEntity.ts (수정 버전)
-// ========================================
+// src/adapters/entities/CartItemEntity.ts (관계 매핑 수정)
 
 import {
   Entity,
@@ -10,6 +9,7 @@ import {
   JoinColumn,
 } from "typeorm";
 import { CartItem } from "../../entities/CartItem";
+import { CartEntity } from "./CartEntity"; // ✅ 직접 import
 
 @Entity("cart_items")
 export class CartItemEntity {
@@ -31,13 +31,12 @@ export class CartItemEntity {
   @CreateDateColumn({ name: "added_at" })
   addedAt!: Date;
 
-  // ✅ 순환 참조 해결: lazy loading 사용
-  @ManyToOne(() => require("./CartEntity").CartEntity, "items", {
+  // ✅ 관계 설정 개선 - 직접 타입 참조
+  @ManyToOne(() => CartEntity, (cart) => cart.items, {
     onDelete: "CASCADE",
-    lazy: true,
   })
   @JoinColumn({ name: "cart_id" })
-  cart!: Promise<any> | any;
+  cart!: CartEntity;
 
   // Domain 객체로 변환
   toDomain(): CartItem {
@@ -46,7 +45,7 @@ export class CartItemEntity {
       cartId: this.cartId,
       productId: this.productId,
       quantity: this.quantity,
-      price: this.price,
+      price: Number(this.price), // ✅ decimal to number 변환
       addedAt: this.addedAt,
     });
   }

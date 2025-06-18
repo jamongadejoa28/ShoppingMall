@@ -1,42 +1,115 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
-import { ROUTES } from '@shared/constants/routes';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
+import { useCartStore } from '../../state/cartStore';
+import { useAuthStore } from '../../state/authStore';
+import { OrderApiAdapter } from '../../../adapters/api/OrderApiAdapter';
+import { ROUTES } from '../../../shared/constants/routes';
 
-const CartPage: React.FC = () => {
+export function CartPage() {
+  const { items, removeItem, updateQuantity, clearCart } = useCartStore(
+    state => state
+  );
+  const { isAuthenticated } = useAuthStore();
+
+  const navigate = useNavigate();
+  const totalAmount = items.reduce(
+    (sum, item) => sum + item.product.price * item.quantity,
+    0
+  );
+
+  const handlePurchase = async () => {
+    if (!isAuthenticated) {
+      toast.error('구매하려면 로그인이 필요합니다.');
+      navigate(ROUTES.LOGIN);
+      return;
+    }
+    if (items.length === 0) {
+      toast.error('장바구니에 상품이 없습니다.');
+      return;
+    }
+
+    const orderApi = new OrderApiAdapter();
+    const orderData = {
+      items: items.map(item => ({
+        productId: item.product.id,
+        quantity: item.quantity,
+      })),
+      shippingAddress: 'temp address',
+      paymentMethod: 'credit_card',
+    };
+
+    try {
+      const loadingToast = toast.loading('주문을 처리 중입니다...');
+      await orderApi.createOrder(orderData);
+      toast.dismiss(loadingToast);
+      toast.success('주문이 성공적으로 완료되었습니다!');
+      clearCart();
+      navigate(ROUTES.ORDERS);
+    } catch (error: any) {
+      toast.error(error.message || '주문 처리 중 오류가 발생했습니다.');
+    }
+  };
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <h1 className="text-3xl font-bold text-gray-900 mb-8">장바구니</h1>
-
-      <div className="bg-white p-8 rounded-lg shadow-sm border border-gray-200">
-        <div className="text-center">
-          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg
-              className="w-8 h-8 text-gray-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+    <div className="container mx-auto mt-10">
+      <h1 className="text-3xl font-bold mb-6">장바구니</h1>
+      {items.length === 0 ? (
+        <p>장바구니에 담긴 상품이 없습니다.</p>
+      ) : (
+        <div>
+          {items.map(item => (
+            <div
+              key={item.product.id}
+              className="flex items-center justify-between border-b py-4"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M3 3h2l.4 2M7 13h10l4-8H5.4m2.6 8L6 5H3m4 8v2a2 2 0 002 2h8a2 2 0 002-2v-2"
-              />
-            </svg>
+              <div className="flex items-center">
+                <img
+                  src={item.product.imageUrls[0]}
+                  alt={item.product.name}
+                  className="w-20 h-20 object-cover mr-4"
+                />
+                <div>
+                  <h2 className="text-lg font-semibold">{item.product.name}</h2>
+                  <p className="text-gray-600">
+                    {item.product.price.toLocaleString()}원
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="number"
+                  value={item.quantity}
+                  onChange={e =>
+                    updateQuantity(
+                      item.product.id,
+                      parseInt(e.target.value, 10)
+                    )
+                  }
+                  className="w-16 text-center border rounded mx-4"
+                  min="1"
+                />
+                <button
+                  onClick={() => removeItem(item.product.id)}
+                  className="text-red-500 hover:text-red-700"
+                >
+                  삭제
+                </button>
+              </div>
+            </div>
+          ))}
+          <div className="mt-6 text-right">
+            <p className="text-2xl font-bold">
+              총액: {totalAmount.toLocaleString()}원
+            </p>
+            <button
+              onClick={handlePurchase}
+              className="mt-4 bg-blue-500 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-600"
+            >
+              구매하기
+            </button>
           </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
-            장바구니가 비어있습니다
-          </h3>
-          <p className="text-gray-600 mb-6">
-            상품을 둘러보고 장바구니에 추가해보세요.
-          </p>
-          <Link to={ROUTES.PRODUCTS} className="btn-primary">
-            상품 둘러보기
-          </Link>
         </div>
-      </div>
+      )}
     </div>
   );
-};
-
-export default CartPage;
+}
