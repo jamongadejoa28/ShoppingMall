@@ -1,15 +1,16 @@
-// src/adapters/entities/CartEntity.ts (최종 수정 버전)
+// ========================================
+// 관계 매핑 제거된 CartEntity.ts - 복잡성 완전 제거
+// src/adapters/entities/CartEntity.ts
+// ========================================
 
 import {
+  Column,
+  CreateDateColumn,
   Entity,
   PrimaryGeneratedColumn,
-  Column,
-  OneToMany,
-  CreateDateColumn,
   UpdateDateColumn,
 } from "typeorm";
 import { Cart } from "../../entities/Cart";
-import { CartItemEntity } from "./CartItemEntity"; // ✅ 직접 import
 
 @Entity("carts")
 export class CartEntity {
@@ -28,23 +29,15 @@ export class CartEntity {
   @UpdateDateColumn({ name: "updated_at" })
   updatedAt!: Date;
 
-  // ✅ 관계 설정 개선 - eager loading으로 변경
-  @OneToMany(() => CartItemEntity, (item) => item.cart, {
-    cascade: true,
-    eager: true, // ✅ lazy에서 eager로 변경
-  })
-  items!: CartItemEntity[];
+  // ✅ 관계 매핑 완전 제거 - 수동으로 처리
 
-  // ✅ Domain 객체로 변환 (동기적 처리)
+  // Domain 객체로 변환 (아이템 없이)
   toDomain(): Cart {
-    const cartItems = this.items?.map((item) => item.toDomain()) || [];
-
     return new Cart({
       id: this.id,
-      // ✅ null을 undefined로 변환
       userId: this.userId || undefined,
       sessionId: this.sessionId || undefined,
-      items: cartItems,
+      items: [], // ✅ 빈 배열로 초기화, 별도로 로드
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
     });
@@ -54,7 +47,7 @@ export class CartEntity {
   static fromDomain(cart: Cart): CartEntity {
     const entity = new CartEntity();
 
-    if (cart.getId()) {
+    if (cart.isPersisted()) {
       entity.id = cart.getId();
     }
 
@@ -62,9 +55,6 @@ export class CartEntity {
     entity.sessionId = cart.getSessionId();
     entity.createdAt = cart.getCreatedAt();
     entity.updatedAt = cart.getUpdatedAt();
-
-    // ✅ 아이템들은 Repository에서 별도 처리
-    entity.items = [];
 
     return entity;
   }

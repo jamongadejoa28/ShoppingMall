@@ -1,15 +1,15 @@
-// src/adapters/entities/CartItemEntity.ts (관계 매핑 수정)
+// ========================================
+// 관계 매핑 제거된 CartItemEntity.ts - 복잡성 완전 제거
+// src/adapters/entities/CartItemEntity.ts
+// ========================================
 
 import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
-  ManyToOne,
-  JoinColumn,
 } from "typeorm";
 import { CartItem } from "../../entities/CartItem";
-import { CartEntity } from "./CartEntity"; // ✅ 직접 import
 
 @Entity("cart_items")
 export class CartItemEntity {
@@ -31,12 +31,8 @@ export class CartItemEntity {
   @CreateDateColumn({ name: "added_at" })
   addedAt!: Date;
 
-  // ✅ 관계 설정 개선 - 직접 타입 참조
-  @ManyToOne(() => CartEntity, (cart) => cart.items, {
-    onDelete: "CASCADE",
-  })
-  @JoinColumn({ name: "cart_id" })
-  cart!: CartEntity;
+  // ✅ 관계 매핑 완전 제거 - 수동으로 처리
+  // @ManyToOne, @JoinColumn 등 모든 관계 제거
 
   // Domain 객체로 변환
   toDomain(): CartItem {
@@ -45,7 +41,7 @@ export class CartItemEntity {
       cartId: this.cartId,
       productId: this.productId,
       quantity: this.quantity,
-      price: Number(this.price), // ✅ decimal to number 변환
+      price: Number(this.price), // decimal to number 변환
       addedAt: this.addedAt,
     });
   }

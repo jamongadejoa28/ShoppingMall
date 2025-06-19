@@ -1,18 +1,10 @@
 // ========================================
-// Cart Entity 수정 버전 - UUID 자동 생성
+// 수정된 Cart Entity - isPersisted 메서드 추가
 // cart-service/src/entities/Cart.ts
 // ========================================
 
 import { CartItem } from "./CartItem";
 import { v4 as uuidv4 } from "uuid";
-
-/**
- * Cart Domain Entity (수정 버전)
- *
- * 주요 변경사항:
- * - Cart 생성시 자동으로 UUID 생성
- * - addItem시 항상 유효한 cartId 보장
- */
 
 export interface CartData {
   id?: string;
@@ -24,42 +16,39 @@ export interface CartData {
 }
 
 export class Cart {
-  private id: string; // ✅ Optional 제거, 항상 존재
+  private id: string;
   private userId?: string;
   private sessionId?: string;
   private items: CartItem[];
   private createdAt: Date;
   private updatedAt: Date;
+  private _isPersisted: boolean = false; // ✅ 추가
 
   constructor(data: CartData) {
-    // 도메인 규칙: userId 또는 sessionId 중 하나는 반드시 있어야 함
     if (!data.userId && !data.sessionId) {
       throw new Error("userId 또는 sessionId 중 하나는 반드시 있어야 합니다");
     }
 
-    // ✅ ID가 없으면 자동 생성
     this.id = data.id || uuidv4();
     this.userId = data.userId;
     this.sessionId = data.sessionId;
     this.items = data.items || [];
     this.createdAt = data.createdAt;
     this.updatedAt = data.updatedAt;
+    // ✅ ID가 제공된 경우 이미 저장된 것으로 간주
+    this._isPersisted = !!data.id;
   }
 
   // ========================================
-  // Factory Methods (수정 버전)
+  // Factory Methods
   // ========================================
-
-  /**
-   * 비로그인 사용자용 장바구니 생성
-   */
   static createForSession(sessionId: string): Cart {
     if (!sessionId || sessionId.trim() === "") {
       throw new Error("세션 ID는 필수입니다");
     }
 
     return new Cart({
-      id: uuidv4(), // ✅ 명시적으로 UUID 생성
+      id: uuidv4(),
       sessionId: sessionId.trim(),
       items: [],
       createdAt: new Date(),
@@ -67,16 +56,13 @@ export class Cart {
     });
   }
 
-  /**
-   * 로그인 사용자용 장바구니 생성
-   */
   static createForUser(userId: string): Cart {
     if (!userId || userId.trim() === "") {
       throw new Error("사용자 ID는 필수입니다");
     }
 
     return new Cart({
-      id: uuidv4(), // ✅ 명시적으로 UUID 생성
+      id: uuidv4(),
       userId: userId.trim(),
       items: [],
       createdAt: new Date(),
@@ -85,25 +71,18 @@ export class Cart {
   }
 
   // ========================================
-  // Core Business Logic - 상품 관리 (수정 버전)
+  // Core Business Logic
   // ========================================
-
-  /**
-   * 상품을 장바구니에 추가
-   * 같은 상품이 있으면 수량 증가, 없으면 새로 추가
-   */
   addItem(productId: string, quantity: number, price: number): void {
     this.validateProductInput(productId, quantity, price);
 
     const existingItem = this.findItem(productId);
 
     if (existingItem) {
-      // 기존 상품 수량 증가
       existingItem.increaseQuantity(quantity);
     } else {
-      // ✅ 새로운 상품 추가 - 이제 cartId가 항상 존재
       const newItem = new CartItem({
-        cartId: this.id, // ✅ 항상 유효한 UUID
+        cartId: this.id,
         productId,
         quantity,
         price,
@@ -112,12 +91,9 @@ export class Cart {
       this.items.push(newItem);
     }
 
-    this.touch(); // 업데이트 시간 갱신
+    this.touch();
   }
 
-  /**
-   * 장바구니에서 상품 제거
-   */
   removeItem(productId: string): void {
     if (!productId || productId.trim() === "") {
       throw new Error("상품 ID는 필수입니다");
@@ -135,10 +111,6 @@ export class Cart {
     this.touch();
   }
 
-  /**
-   * 상품 수량 변경
-   * 수량이 0이면 상품 제거
-   */
   updateItemQuantity(productId: string, quantity: number): void {
     if (!productId || productId.trim() === "") {
       throw new Error("상품 ID는 필수입니다");
@@ -148,7 +120,6 @@ export class Cart {
       throw new Error("수량은 0 이상이어야 합니다");
     }
 
-    // 수량이 0이면 상품 제거
     if (quantity === 0) {
       this.removeItem(productId);
       return;
@@ -163,13 +134,6 @@ export class Cart {
     this.touch();
   }
 
-  // ========================================
-  // 장바구니 이전 및 병합 (기존과 동일)
-  // ========================================
-
-  /**
-   * 세션 장바구니를 사용자 장바구니로 이전 (로그인 시)
-   */
   transferToUser(userId: string): void {
     if (!userId || userId.trim() === "") {
       throw new Error("사용자 ID는 필수입니다");
@@ -184,21 +148,15 @@ export class Cart {
     this.touch();
   }
 
-  /**
-   * 다른 장바구니와 병합
-   * 같은 상품은 수량 증가, 새로운 상품은 추가
-   */
   mergeWith(otherCart: Cart): void {
     for (const otherItem of otherCart.getItems()) {
       const existingItem = this.findItem(otherItem.getProductId());
 
       if (existingItem) {
-        // 기존 상품 수량 증가
         existingItem.increaseQuantity(otherItem.getQuantity());
       } else {
-        // ✅ 새로운 상품 추가 - cartId 업데이트
         const newItem = new CartItem({
-          cartId: this.id, // ✅ 현재 장바구니의 ID 사용
+          cartId: this.id,
           productId: otherItem.getProductId(),
           quantity: otherItem.getQuantity(),
           price: otherItem.getPrice(),
@@ -211,74 +169,60 @@ export class Cart {
     this.touch();
   }
 
-  /**
-   * 장바구니 비우기
-   */
   clear(): void {
     this.items = [];
     this.touch();
   }
 
   // ========================================
-  // Query Methods - 조회 로직 (기존과 동일)
+  // Query Methods
   // ========================================
-
-  /**
-   * 특정 상품 아이템 찾기
-   */
   findItem(productId: string): CartItem | undefined {
     return this.items.find((item) => item.getProductId() === productId);
   }
 
-  /**
-   * 특정 상품이 장바구니에 있는지 확인
-   */
   hasItem(productId: string): boolean {
     return this.findItem(productId) !== undefined;
   }
 
-  /**
-   * 특정 상품의 수량 조회
-   */
   getItemQuantity(productId: string): number {
     const item = this.findItem(productId);
     return item ? item.getQuantity() : 0;
   }
 
-  /**
-   * 장바구니 총 금액 계산
-   */
   getTotalAmount(): number {
     return this.items.reduce((total, item) => total + item.getSubtotal(), 0);
   }
 
-  /**
-   * 장바구니 총 아이템 수량 계산
-   */
   getTotalItems(): number {
     return this.items.reduce((total, item) => total + item.getQuantity(), 0);
   }
 
-  /**
-   * 장바구니 상품 종류 수
-   */
   getUniqueItemCount(): number {
     return this.items.length;
   }
 
-  /**
-   * 장바구니가 비어있는지 확인
-   */
   isEmpty(): boolean {
     return this.items.length === 0;
   }
 
-  // ========================================
-  // Getters (수정 버전)
-  // ========================================
+  // ✅ 저장 상태 관리 메서드들
+  isPersisted(): boolean {
+    return this._isPersisted;
+  }
 
+  markAsPersisted(): void {
+    this._isPersisted = true;
+  }
+
+  markAsNew(): void {
+    this._isPersisted = false;
+  }
+
+  // ========================================
+  // Getters
+  // ========================================
   getId(): string {
-    // ✅ Optional 제거
     return this.id;
   }
 
@@ -291,7 +235,7 @@ export class Cart {
   }
 
   getItems(): CartItem[] {
-    return [...this.items]; // 불변성 보장
+    return [...this.items];
   }
 
   getCreatedAt(): Date {
@@ -303,12 +247,8 @@ export class Cart {
   }
 
   // ========================================
-  // Internal Helpers (기존과 동일)
+  // Internal Helpers
   // ========================================
-
-  /**
-   * 상품 입력값 검증
-   */
   private validateProductInput(
     productId: string,
     quantity: number,
@@ -327,22 +267,15 @@ export class Cart {
     }
   }
 
-  /**
-   * 업데이트 시간 갱신
-   */
   private touch(): void {
     this.updatedAt = new Date();
   }
 
   // ========================================
-  // Domain Events (기존과 동일)
+  // Utility Methods
   // ========================================
-
-  /**
-   * 장바구니 요약 정보 생성 (로깅, 이벤트용)
-   */
   getSummary(): {
-    id: string; // ✅ Optional 제거
+    id: string;
     userId?: string;
     sessionId?: string;
     totalItems: number;
@@ -361,9 +294,6 @@ export class Cart {
     };
   }
 
-  /**
-   * 장바구니 데이터 직렬화 (API 응답용)
-   */
   toJSON(): CartData & {
     totalItems: number;
     totalAmount: number;
