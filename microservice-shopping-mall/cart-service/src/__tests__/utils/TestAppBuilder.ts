@@ -1,7 +1,7 @@
 // cart-service/src/__tests__/utils/TestAppBuilder.ts
 // ========================================
 
-import express, { Express } from "express";
+import express, { Express, Request, Response } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
@@ -152,7 +152,7 @@ export class TestAppBuilder {
    */
   private setupErrorHandling(): void {
     // 404 핸들러
-    this.app.use("*", (req, res) => {
+    this.app.use((req: Request, res: Response) => {
       res.status(404).json({
         success: false,
         message: `Route ${req.method} ${req.originalUrl} not found`,

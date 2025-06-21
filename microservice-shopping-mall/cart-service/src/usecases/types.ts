@@ -134,7 +134,12 @@ export interface ClearCartResponse {
 export interface ProductInfo {
   id: string;
   name: string;
+  description: string;
   price: number;
+  currency: string;
+  availableQuantity: number;
+  category: string;
+  imageUrl: string;
   inventory: {
     quantity: number;
     status: "in_stock" | "low_stock" | "out_of_stock";

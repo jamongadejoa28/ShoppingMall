@@ -1,62 +1,63 @@
-// Mock ProductServiceClient (테스트용)
+// ========================================
+// Mock ProductServiceClient (수정됨)
 // cart-service/src/adapters/MockProductServiceClient.ts
 // ========================================
 
-import { injectable, inject } from "inversify";
+import { injectable } from "inversify";
 import {
   ProductServiceClient,
   ProductInfo,
   InventoryCheckResult,
 } from "../usecases/types";
 
+/**
+ * Mock 통계 인터페이스
+ */
+interface MockStats {
+  totalProducts: number;
+  totalCalls: number;
+  getProductCalls: number;
+  checkInventoryCalls: number;
+  reserveInventoryCalls: number;
+}
+
 @injectable()
 export class MockProductServiceClient implements ProductServiceClient {
-  // 테스트용 상품 데이터
-  private mockProducts: Map<string, ProductInfo> = new Map([
-    [
-      "660e8400-e29b-41d4-a716-446655440001",
-      {
-        id: "660e8400-e29b-41d4-a716-446655440001",
-        name: "MacBook Pro 16인치 M3 Pro",
-        price: 3299000,
-        inventory: {
-          quantity: 10,
-          status: "in_stock" as const,
-        },
-        isActive: true,
-      },
-    ],
-    [
-      "660e8400-e29b-41d4-a716-446655440002",
-      {
-        id: "660e8400-e29b-41d4-a716-446655440002",
-        name: "LG 그램 17인치 2024",
-        price: 1899000,
-        inventory: {
-          quantity: 5,
-          status: "low_stock" as const,
-        },
-        isActive: true,
-      },
-    ],
-    [
-      "660e8400-e29b-41d4-a716-446655440003",
-      {
-        id: "660e8400-e29b-41d4-a716-446655440003",
-        name: "iPhone 15 Pro Max",
-        price: 1690000,
-        inventory: {
-          quantity: 0,
-          status: "out_of_stock" as const,
-        },
-        isActive: true,
-      },
-    ],
-  ]);
+  // 🔧 추가: 테스트용 상품 데이터 저장소
+  private mockProducts: Map<string, ProductInfo> = new Map();
+
+  // 🔧 추가: Mock 설정
+  private delay: number = 0;
+  private errorMode: boolean = false;
+
+  // 🔧 추가: 통계 추적
+  private stats: MockStats = {
+    totalProducts: 0,
+    totalCalls: 0,
+    getProductCalls: 0,
+    checkInventoryCalls: 0,
+    reserveInventoryCalls: 0,
+  };
+
+  constructor() {
+    // 기본 테스트 데이터 초기화
+    this.initializeDefaultProducts();
+  }
+
+  // ========================================
+  // ProductServiceClient 인터페이스 구현
+  // ========================================
 
   async getProduct(productId: string): Promise<ProductInfo | null> {
-    // 실제 환경에서는 Product Service API 호출
-    await this.delay(100); // 네트워크 지연 시뮬레이션
+    this.stats.totalCalls++;
+    this.stats.getProductCalls++;
+
+    await this.simulateDelay();
+
+    if (this.errorMode) {
+      throw new Error("Mock Product Service Error");
+    }
+
     return this.mockProducts.get(productId) || null;
   }
 
@@ -64,6 +65,15 @@ export class MockProductServiceClient implements ProductServiceClient {
     productId: string,
     quantity: number
   ): Promise<InventoryCheckResult> {
+    this.stats.totalCalls++;
+    this.stats.checkInventoryCalls++;
+
+    await this.simulateDelay();
+
+    if (this.errorMode) {
+      throw new Error("Mock Product Service Error");
+    }
+
     const product = await this.getProduct(productId);
 
     if (!product) {
@@ -76,14 +86,16 @@ export class MockProductServiceClient implements ProductServiceClient {
       };
     }
 
-    const isAvailable = product.inventory.quantity >= quantity;
+    const isAvailable = product.availableQuantity >= quantity;
 
     return {
       productId,
       requestedQuantity: quantity,
-      availableQuantity: product.inventory.quantity,
+      availableQuantity: product.availableQuantity,
       isAvailable,
-      message: isAvailable ? "재고 확인 완료" : "재고가 부족합니다",
+      message: isAvailable
+        ? "재고가 충분합니다"
+        : `재고가 부족합니다. 요청: ${quantity}, 가용: ${product.availableQuantity}`,
     };
   }
 
@@ -91,44 +103,204 @@ export class MockProductServiceClient implements ProductServiceClient {
     productId: string,
     quantity: number
   ): Promise<boolean> {
-    // 실제 환경에서는 Product Service의 재고 예약 API 호출
-    const checkResult = await this.checkInventory(productId, quantity);
+    this.stats.totalCalls++;
+    this.stats.reserveInventoryCalls++;
 
-    if (checkResult.isAvailable) {
-      // Mock으로 재고 감소 시뮬레이션
-      const product = this.mockProducts.get(productId);
-      if (product) {
-        product.inventory.quantity -= quantity;
-        if (product.inventory.quantity <= 0) {
-          product.inventory.status = "out_of_stock";
-        } else if (product.inventory.quantity <= 5) {
-          product.inventory.status = "low_stock";
-        }
-      }
+    await this.simulateDelay();
+
+    if (this.errorMode) {
+      throw new Error("Mock Product Service Error");
+    }
+
+    const product = this.mockProducts.get(productId);
+    if (!product) {
+      return false;
+    }
+
+    if (product.availableQuantity >= quantity) {
+      // 재고 감소 시뮬레이션
+      const updatedProduct = {
+        ...product,
+        availableQuantity: product.availableQuantity - quantity,
+        inventory: {
+          ...product.inventory,
+          quantity: product.inventory.quantity - quantity,
+          status:
+            product.availableQuantity - quantity === 0
+              ? ("out_of_stock" as const)
+              : product.availableQuantity - quantity <= 5
+                ? ("low_stock" as const)
+                : ("in_stock" as const),
+        },
+      };
+
+      this.mockProducts.set(productId, updatedProduct);
       return true;
     }
 
     return false;
   }
 
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  // ========================================
+  // 🔧 추가: 테스트 헬퍼 메서드들
+  // ========================================
+
+  /**
+   * Mock 상품 추가
+   */
+  addMockProduct(product: ProductInfo): void {
+    this.mockProducts.set(product.id, product);
+    this.stats.totalProducts = this.mockProducts.size;
   }
 
-  // 테스트용 헬퍼 메서드
+  /**
+   * 🔧 추가: setMockProduct (addMockProduct의 별칭)
+   * 기존 테스트 코드와의 호환성을 위해 추가
+   */
   setMockProduct(productId: string, product: ProductInfo): void {
-    this.mockProducts.set(productId, product);
+    this.addMockProduct(product);
   }
 
+  /**
+   * Mock 상품 제거
+   */
+  removeMockProduct(productId: string): void {
+    this.mockProducts.delete(productId);
+    this.stats.totalProducts = this.mockProducts.size;
+  }
+
+  /**
+   * 모든 Mock 데이터 리셋
+   */
   resetMockData(): void {
-    // 초기 데이터로 리셋
     this.mockProducts.clear();
-    this.mockProducts.set("660e8400-e29b-41d4-a716-446655440001", {
-      id: "660e8400-e29b-41d4-a716-446655440001",
-      name: "MacBook Pro 16인치 M3 Pro",
-      price: 3299000,
-      inventory: { quantity: 10, status: "in_stock" },
-      isActive: true,
-    });
+    this.stats = {
+      totalProducts: 0,
+      totalCalls: 0,
+      getProductCalls: 0,
+      checkInventoryCalls: 0,
+      reserveInventoryCalls: 0,
+    };
+    this.delay = 0;
+    this.errorMode = false;
+
+    // 기본 테스트 데이터 다시 로드
+    this.initializeDefaultProducts();
+  }
+
+  /**
+   * 응답 지연 설정
+   */
+  setDelay(delayMs: number): void {
+    this.delay = Math.max(0, delayMs);
+  }
+
+  /**
+   * 에러 모드 설정
+   */
+  setErrorMode(enabled: boolean): void {
+    this.errorMode = enabled;
+  }
+
+  /**
+   * Mock 통계 조회
+   */
+  getMockStats(): MockStats {
+    return { ...this.stats };
+  }
+
+  /**
+   * 특정 상품의 재고 직접 설정 (테스트용)
+   */
+  setProductStock(productId: string, availableQuantity: number): boolean {
+    const product = this.mockProducts.get(productId);
+    if (!product) {
+      return false;
+    }
+
+    const updatedProduct = {
+      ...product,
+      availableQuantity,
+      inventory: {
+        ...product.inventory,
+        quantity: availableQuantity,
+        status:
+          availableQuantity === 0
+            ? ("out_of_stock" as const)
+            : availableQuantity <= 5
+              ? ("low_stock" as const)
+              : ("in_stock" as const),
+      },
+    };
+
+    this.mockProducts.set(productId, updatedProduct);
+    return true;
+  }
+
+  /**
+   * 모든 Mock 상품 목록 조회
+   */
+  getAllMockProducts(): ProductInfo[] {
+    return Array.from(this.mockProducts.values());
+  }
+
+  /**
+   * Mock 상품 존재 여부 확인
+   */
+  hasMockProduct(productId: string): boolean {
+    return this.mockProducts.has(productId);
+  }
+
+  // ========================================
+  // Private 헬퍼 메서드들
+  // ========================================
+
+  /**
+   * 기본 테스트 상품 데이터 초기화
+   */
+  private initializeDefaultProducts(): void {
+    const defaultProducts: ProductInfo[] = [
+      {
+        id: "default-product-1",
+        name: "기본 테스트 상품 1",
+        description: "테스트용 기본 상품 1",
+        price: 10000,
+        currency: "KRW",
+        availableQuantity: 100,
+        category: "electronics",
+        imageUrl: "https://example.com/product1.jpg",
+        inventory: {
+          quantity: 100,
+          status: "in_stock",
+        },
+        isActive: true,
+      },
+      {
+        id: "default-product-2",
+        name: "기본 테스트 상품 2",
+        description: "테스트용 기본 상품 2",
+        price: 25000,
+        currency: "KRW",
+        availableQuantity: 50,
+        category: "clothing",
+        imageUrl: "https://example.com/product2.jpg",
+        inventory: {
+          quantity: 50,
+          status: "in_stock",
+        },
+        isActive: true,
+      },
+    ];
+
+    defaultProducts.forEach((product) => this.addMockProduct(product));
+  }
+
+  /**
+   * 지연 시뮬레이션
+   */
+  private async simulateDelay(): Promise<void> {
+    if (this.delay > 0) {
+      await new Promise((resolve) => setTimeout(resolve, this.delay));
+    }
   }
 }

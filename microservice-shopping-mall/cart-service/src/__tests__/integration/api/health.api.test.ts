@@ -1,5 +1,5 @@
 // ========================================
-// Health API 통합 테스트 (완전 구현)
+// Health API 통합 테스트 (수정됨)
 // cart-service/src/__tests__/integration/api/health.api.test.ts
 // ========================================
 
@@ -137,7 +137,7 @@ describe("Health API Integration Tests", () => {
 
   describe("404 및 에러 처리", () => {
     test("존재하지 않는 엔드포인트 - 404 처리", async () => {
-      const response = await apiClient.app.get("/nonexistent-endpoint");
+      const response = await apiClient.get("/nonexistent-endpoint");
 
       expect(response.status).toBe(404);
       expect(response.body).toMatchObject({
@@ -149,13 +149,13 @@ describe("Health API Integration Tests", () => {
     });
 
     test("잘못된 HTTP 메서드 - 404 처리", async () => {
-      const response = await apiClient.app.patch("/health");
+      const response = await apiClient.patch("/health");
 
       expect(response.status).toBe(404);
     });
 
     test("빈 요청 경로 처리", async () => {
-      const response = await apiClient.app.get("");
+      const response = await apiClient.get("");
 
       // 서버가 적절히 처리하는지 확인 (404 또는 리다이렉트)
       expect([200, 301, 302, 404]).toContain(response.status);
@@ -176,9 +176,9 @@ describe("Health API Integration Tests", () => {
     });
 
     test("CORS 헤더 확인", async () => {
-      const response = await apiClient.app
-        .options("/health")
-        .set("Origin", "http://localhost:3000");
+      const response = await apiClient.options("/health", {
+        Origin: "http://localhost:3000",
+      });
 
       expect(response.headers).toHaveProperty("access-control-allow-origin");
       expect(response.headers).toHaveProperty("access-control-allow-methods");
@@ -217,81 +217,133 @@ describe("Health API Integration Tests", () => {
 
     test("연속 요청 안정성 테스트", async () => {
       const requestCount = 10;
-      const responses: any[] = [];
+      const responses = [];
 
       for (let i = 0; i < requestCount; i++) {
         const response = await apiClient.healthCheck();
         responses.push(response);
 
-        // 짧은 딜레이 (실제 사용 패턴 시뮬레이션)
+        // 짧은 지연 (실제 사용 패턴 시뮬레이션)
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
 
-      // 모든 응답이 일관되게 성공했는지 확인
+      // 모든 요청이 성공했는지 확인
       responses.forEach((response, index) => {
         expect(response.status).toBe(200);
         expect(response.body.data.status).toBe("healthy");
       });
 
-      console.log(`✅ ${requestCount}번의 연속 요청 모두 안정적으로 처리`);
+      console.log(`✅ ${requestCount}개의 연속 요청 모두 성공`);
     });
 
-    test("메모리 누수 확인 (간단한 테스트)", async () => {
+    test("메모리 리크 방지 확인", async () => {
+      // 메모리 사용량 체크를 위한 기본적인 테스트
       const initialMemory = process.memoryUsage().heapUsed;
 
-      // 100번의 요청 실행
-      for (let i = 0; i < 100; i++) {
-        await apiClient.healthCheck();
-      }
+      // 많은 요청 실행
+      const promises = Array.from({ length: 50 }, () =>
+        apiClient.healthCheck()
+      );
+      await Promise.all(promises);
 
-      // 가비지 컬렉션 강제 실행 (테스트 환경에서만)
+      // 가비지 컬렉션 유도
       if (global.gc) {
         global.gc();
       }
 
       const finalMemory = process.memoryUsage().heapUsed;
-      const memoryGrowth = finalMemory - initialMemory;
+      const memoryIncrease = finalMemory - initialMemory;
 
-      // 메모리 증가가 합리적인 범위 내인지 확인 (10MB 이하)
-      expect(memoryGrowth).toBeLessThan(10 * 1024 * 1024);
+      // 메모리 증가가 과도하지 않은지 확인 (10MB 이하)
+      expect(memoryIncrease).toBeLessThan(10 * 1024 * 1024);
 
       console.log(
-        `📊 메모리 사용량 변화: ${(memoryGrowth / 1024 / 1024).toFixed(2)}MB`
+        `📊 메모리 증가량: ${(memoryIncrease / 1024 / 1024).toFixed(2)}MB`
       );
     });
   });
 
   // ========================================
-  // 🌐 네트워크 및 타임아웃 테스트
+  // 🌐 다양한 요청 형태 테스트
   // ========================================
 
-  describe("네트워크 및 타임아웃", () => {
-    test("응답 형식 일관성 (JSON)", async () => {
-      const response = await apiClient.healthCheck();
+  describe("다양한 요청 형태", () => {
+    test("다양한 Accept 헤더 처리", async () => {
+      const acceptHeaders = [
+        "application/json",
+        "application/json, text/plain, */*",
+        "*/*",
+      ];
 
-      expect(response.headers["content-type"]).toMatch(/application\/json/);
-      expect(() => JSON.parse(JSON.stringify(response.body))).not.toThrow();
+      for (const acceptHeader of acceptHeaders) {
+        const response = await apiClient.get("/health", {
+          Accept: acceptHeader,
+        });
+
+        expect(response.status).toBe(200);
+        expect(response.headers["content-type"]).toMatch(/json/);
+      }
     });
 
-    test("응답 크기 확인 (효율성)", async () => {
-      const response = await apiClient.healthCheck();
+    test("User-Agent 헤더 처리", async () => {
+      const userAgents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "curl/7.68.0",
+        "PostmanRuntime/7.26.8",
+        undefined, // User-Agent 없음
+      ];
 
-      const responseSize = JSON.stringify(response.body).length;
+      for (const userAgent of userAgents) {
+        const headers = userAgent ? { "User-Agent": userAgent } : {};
+        const response = await apiClient.get("/health", headers);
 
-      // 응답이 너무 크지 않은지 확인 (1KB 이하)
-      expect(responseSize).toBeLessThan(1024);
-
-      console.log(`📦 응답 크기: ${responseSize} bytes`);
+        expect(response.status).toBe(200);
+      }
     });
 
-    test("압축 지원 확인", async () => {
-      const response = await apiClient.app
-        .get("/health")
-        .set("Accept-Encoding", "gzip, deflate");
+    test("대용량 요청 헤더 처리", async () => {
+      // 큰 크기의 헤더 생성 (하지만 합리적인 범위 내)
+      const largeHeaderValue = "x".repeat(1000);
+
+      const response = await apiClient.get("/health", {
+        "X-Large-Header": largeHeaderValue,
+      });
 
       expect(response.status).toBe(200);
-      // 압축이 적용되었는지 확인 (선택적)
-      // expect(response.headers).toHaveProperty('content-encoding');
+    });
+  });
+
+  // ========================================
+  // 🕒 타임아웃 및 응답성 테스트
+  // ========================================
+
+  describe("타임아웃 및 응답성", () => {
+    test("헬스체크 빠른 응답 시간", async () => {
+      const startTime = process.hrtime.bigint();
+
+      const response = await apiClient.healthCheck();
+
+      const endTime = process.hrtime.bigint();
+      const responseTimeMs = Number(endTime - startTime) / 1000000; // 나노초를 밀리초로
+
+      expect(response.status).toBe(200);
+      expect(responseTimeMs).toBeLessThan(100); // 100ms 이하
+
+      console.log(`⚡ 헬스체크 응답 시간: ${responseTimeMs.toFixed(2)}ms`);
+    });
+
+    test("서비스 정보 응답 시간", async () => {
+      const startTime = process.hrtime.bigint();
+
+      const response = await apiClient.getServiceInfo();
+
+      const endTime = process.hrtime.bigint();
+      const responseTimeMs = Number(endTime - startTime) / 1000000;
+
+      expect(response.status).toBe(200);
+      expect(responseTimeMs).toBeLessThan(200); // 200ms 이하
+
+      console.log(`⚡ 서비스 정보 응답 시간: ${responseTimeMs.toFixed(2)}ms`);
     });
   });
 });

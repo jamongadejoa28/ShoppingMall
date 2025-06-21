@@ -1,5 +1,5 @@
 // ========================================
-// API 테스트 클라이언트
+// API 테스트 클라이언트 (수정됨)
 // cart-service/src/__tests__/utils/ApiTestClient.ts
 // ========================================
 
@@ -72,6 +72,74 @@ export class ApiTestClient {
   }
 
   // ========================================
+  // 🔧 추가: 일반적인 HTTP 메서드들 (오류 해결용)
+  // ========================================
+
+  async get(path: string, headers?: any) {
+    let req = request(this.app).get(path);
+    if (headers) {
+      Object.keys(headers).forEach((key) => {
+        req = req.set(key, headers[key]);
+      });
+    }
+    return req;
+  }
+
+  async post(path: string, data?: any, headers?: any) {
+    let req = request(this.app).post(path);
+    if (data) req = req.send(data);
+    if (headers) {
+      Object.keys(headers).forEach((key) => {
+        req = req.set(key, headers[key]);
+      });
+    }
+    return req;
+  }
+
+  async put(path: string, data?: any, headers?: any) {
+    let req = request(this.app).put(path);
+    if (data) req = req.send(data);
+    if (headers) {
+      Object.keys(headers).forEach((key) => {
+        req = req.set(key, headers[key]);
+      });
+    }
+    return req;
+  }
+
+  async patch(path: string, data?: any, headers?: any) {
+    let req = request(this.app).patch(path);
+    if (data) req = req.send(data);
+    if (headers) {
+      Object.keys(headers).forEach((key) => {
+        req = req.set(key, headers[key]);
+      });
+    }
+    return req;
+  }
+
+  async delete(path: string, data?: any, headers?: any) {
+    let req = request(this.app).delete(path);
+    if (data) req = req.send(data);
+    if (headers) {
+      Object.keys(headers).forEach((key) => {
+        req = req.set(key, headers[key]);
+      });
+    }
+    return req;
+  }
+
+  async options(path: string, headers?: any) {
+    let req = request(this.app).options(path);
+    if (headers) {
+      Object.keys(headers).forEach((key) => {
+        req = req.set(key, headers[key]);
+      });
+    }
+    return req;
+  }
+
+  // ========================================
   // 공통 유틸리티 메서드들
   // ========================================
 
@@ -100,5 +168,17 @@ export class ApiTestClient {
     if (expectedMessage) {
       expect(response.body.message).toContain(expectedMessage);
     }
+  }
+
+  // ========================================
+  // 🔧 디버깅용: Express App에 대한 제한적 접근
+  // ========================================
+
+  /**
+   * 테스트 목적으로만 사용 - Express app에 대한 제한적 접근
+   * 일반적으로는 위의 메서드들을 사용하는 것을 권장
+   */
+  getRequestAgent() {
+    return request(this.app);
   }
 }
