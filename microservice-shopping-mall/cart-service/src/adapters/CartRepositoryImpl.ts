@@ -10,12 +10,15 @@ import { CartItem } from "../entities/CartItem";
 import { CartRepository } from "../usecases/types";
 import { CartEntity } from "./entities/CartEntity";
 import { CartItemEntity } from "./entities/CartItemEntity";
+import { injectable, inject } from "inversify";
+import { TYPES } from "../infrastructure/di/types";
 
+@injectable()
 export class CartRepositoryImpl implements CartRepository {
   private cartRepository: Repository<CartEntity>;
   private itemRepository: Repository<CartItemEntity>;
 
-  constructor(private dataSource: DataSource) {
+  constructor(@inject(TYPES.DataSource) private dataSource: DataSource) {
     this.cartRepository = dataSource.getRepository(CartEntity);
     this.itemRepository = dataSource.getRepository(CartItemEntity);
   }

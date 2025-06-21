@@ -1,19 +1,24 @@
+// ========================================
+// TransferCartUseCase - 새로운 CacheService 구조 적용
 // cart-service/src/usecases/TransferCartUseCase.ts
 // ========================================
 
+import { injectable, inject } from "inversify";
 import { Cart } from "../entities/Cart";
 import {
   TransferCartRequest,
   TransferCartResponse,
   CartRepository,
-  CartCache,
+  CacheService,
   InvalidRequestError,
 } from "./types";
+import { TYPES } from "../infrastructure/di/types";
 
+@injectable()
 export class TransferCartUseCase {
   constructor(
-    private cartRepository: CartRepository,
-    private cartCache: CartCache
+    @inject(TYPES.CartRepository) private cartRepository: CartRepository,
+    @inject(TYPES.CacheService) private cacheService: CacheService
   ) {}
 
   async execute(request: TransferCartRequest): Promise<TransferCartResponse> {
@@ -31,6 +36,9 @@ export class TransferCartUseCase {
         const newUserCart = Cart.createForUser(request.userId);
         const savedCart = await this.cartRepository.save(newUserCart);
 
+        // 새 장바구니 캐시
+        await this.updateUserCache(request.userId, savedCart);
+
         return {
           success: true,
           cart: savedCart,
@@ -47,7 +55,10 @@ export class TransferCartUseCase {
         await this.cartRepository.delete(sessionCart.getId()!); // 세션 장바구니 삭제
 
         const savedCart = await this.cartRepository.save(userCart);
-        await this.updateCache(request.userId, savedCart);
+
+        // 캐시 업데이트 (세션 캐시 삭제, 사용자 캐시 업데이트)
+        await this.cleanupSessionCache(request.sessionId);
+        await this.updateUserCache(request.userId, savedCart);
 
         return {
           success: true,
@@ -58,7 +69,10 @@ export class TransferCartUseCase {
         // 5. 세션 장바구니를 사용자 장바구니로 이전
         sessionCart.transferToUser(request.userId);
         const savedCart = await this.cartRepository.save(sessionCart);
-        await this.updateCache(request.userId, savedCart);
+
+        // 캐시 업데이트 (세션 -> 사용자로 이전)
+        await this.cleanupSessionCache(request.sessionId);
+        await this.updateUserCache(request.userId, savedCart);
 
         return {
           success: true,
@@ -67,12 +81,12 @@ export class TransferCartUseCase {
         };
       }
     } catch (error) {
-      // ✅ 타입 안전한 에러 처리
+      // 비즈니스 로직 에러는 그대로 전파
       if (error instanceof InvalidRequestError) {
-        throw error; // 비즈니스 로직 에러는 그대로 전파
+        throw error;
       }
 
-      // ✅ unknown 타입 에러 처리
+      // 타입 안전한 에러 처리
       const errorMessage = this.getErrorMessage(error);
       throw new Error(`장바구니 이전 중 오류가 발생했습니다: ${errorMessage}`);
     }
@@ -92,12 +106,34 @@ export class TransferCartUseCase {
     targetCart.mergeWith(sourceCart);
   }
 
-  private async updateCache(userId: string, cart: Cart): Promise<void> {
-    await this.cartCache.setCart(cart.getId()!, cart);
-    await this.cartCache.setUserCartId(userId, cart.getId()!);
+  /**
+   * 사용자 캐시 업데이트
+   */
+  private async updateUserCache(userId: string, cart: any): Promise<void> {
+    try {
+      await this.cacheService.set(`cart:${cart.getId()}`, cart, 1800); // 30분
+      await this.cacheService.set(`user:${userId}`, cart.getId(), 3600); // 1시간
+    } catch (error) {
+      console.error("[TransferCartUseCase] 사용자 캐시 업데이트 오류:", error);
+    }
   }
 
-  // ✅ 타입 안전한 에러 메시지 추출
+  /**
+   * 세션 캐시 정리
+   */
+  private async cleanupSessionCache(sessionId: string): Promise<void> {
+    try {
+      // 세션 매핑 삭제
+      await this.cacheService.delete(`session:${sessionId}`);
+
+      // 패턴 기반으로 세션 관련 캐시 정리
+      await this.cacheService.invalidatePattern(`session:${sessionId}*`);
+    } catch (error) {
+      console.error("[TransferCartUseCase] 세션 캐시 정리 오류:", error);
+    }
+  }
+
+  // 타입 안전한 에러 메시지 추출
   private getErrorMessage(error: unknown): string {
     if (error instanceof Error) {
       return error.message;

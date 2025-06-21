@@ -1,22 +1,28 @@
+// ========================================
+// AddToCartUseCase.ts - Inversify 데코레이터 추가 (수정본)
 // cart-service/src/usecases/AddToCartUseCase.ts
 // ========================================
 
+import { injectable, inject } from "inversify";
 import { Cart } from "../entities/Cart";
 import {
   AddToCartRequest,
   AddToCartResponse,
   CartRepository,
-  CartCache,
+  CacheService,
   ProductServiceClient,
   ProductNotFoundError,
   InsufficientStockError,
   InvalidRequestError,
 } from "./types";
+import { TYPES } from "../infrastructure/di/types";
 
+@injectable()
 export class AddToCartUseCase {
   constructor(
-    private cartRepository: CartRepository,
-    private cartCache: CartCache,
+    @inject(TYPES.CartRepository) private cartRepository: CartRepository,
+    @inject(TYPES.CacheService) private cacheService: CacheService,
+    @inject(TYPES.ProductServiceClient)
     private productServiceClient: ProductServiceClient
   ) {}
 
@@ -53,7 +59,25 @@ export class AddToCartUseCase {
 
       // 6. 저장 및 캐시 업데이트
       const savedCart = await this.cartRepository.save(cart);
-      await this.cartCache.setCart(savedCart.getId()!, savedCart);
+
+      // 새로운 CacheService 사용
+      await this.cacheService.set(`cart:${savedCart.getId()}`, savedCart, 1800);
+
+      // 사용자/세션 매핑 캐시
+      if (request.userId) {
+        await this.cacheService.set(
+          `user:${request.userId}`,
+          savedCart.getId(),
+          3600
+        );
+      }
+      if (request.sessionId) {
+        await this.cacheService.set(
+          `session:${request.sessionId}`,
+          savedCart.getId(),
+          300
+        );
+      }
 
       return {
         success: true,

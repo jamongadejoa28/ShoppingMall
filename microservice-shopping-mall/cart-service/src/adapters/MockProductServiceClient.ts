@@ -2,12 +2,14 @@
 // cart-service/src/adapters/MockProductServiceClient.ts
 // ========================================
 
+import { injectable, inject } from "inversify";
 import {
   ProductServiceClient,
   ProductInfo,
   InventoryCheckResult,
 } from "../usecases/types";
 
+@injectable()
 export class MockProductServiceClient implements ProductServiceClient {
   // 테스트용 상품 데이터
   private mockProducts: Map<string, ProductInfo> = new Map([

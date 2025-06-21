@@ -1,5 +1,5 @@
 // ========================================
-// 타입 정의 및 인터페이스 - Types Layer
+// 타입 정의 및 인터페이스 - Types Layer (업데이트)
 // cart-service/src/usecases/types.ts
 // ========================================
 
@@ -20,16 +20,22 @@ export interface CartRepository {
   deleteBySessionId(sessionId: string): Promise<void>;
 }
 
-export interface CartCache {
-  setCart(cartId: string, cart: Cart): Promise<void>;
-  getCart(cartId: string): Promise<Cart | null>;
-  setUserCartId(userId: string, cartId: string): Promise<void>;
-  getUserCartId(userId: string): Promise<string | null>;
-  setSessionCartId(sessionId: string, cartId: string): Promise<void>;
-  getSessionCartId(sessionId: string): Promise<string | null>;
-  deleteCart(cartId: string): Promise<void>;
-  deleteUserCart(userId: string): Promise<void>;
-  deleteSessionCart(sessionId: string): Promise<void>;
+// ========================================
+// 새로운 CacheService 인터페이스 (product-service 패턴)
+// ========================================
+
+export interface CacheService {
+  get<T>(key: string): Promise<T | null>;
+  set(key: string, value: any, ttl?: number): Promise<void>;
+  delete(key: string): Promise<void>;
+  invalidatePattern(pattern: string): Promise<void>;
+  getStats(): Promise<{
+    isConnected: boolean;
+    totalKeys: number;
+    usedMemory: string;
+    hitRate?: number;
+  }>;
+  disconnect?(): Promise<void>;
 }
 
 export interface ProductServiceClient {
@@ -224,57 +230,6 @@ export type CartSummary = {
   items: CartItemSummary[];
   totalItems: number;
   totalAmount: number;
-  uniqueItemCount: number;
-  isEmpty: boolean;
   createdAt: Date;
   updatedAt: Date;
 };
-
-// ========================================
-// Configuration Types
-// ========================================
-
-export interface CartServiceConfig {
-  maxCartItems: number;
-  sessionCartExpiryDays: number;
-  cacheDefaultTTL: number;
-  cacheCartTTL: number;
-  cacheUserCartTTL: number;
-}
-
-// ========================================
-// Event Types (추후 확장용)
-// ========================================
-
-export interface CartEvent {
-  type: string;
-  cartId?: string;
-  userId?: string;
-  sessionId?: string;
-  timestamp: Date;
-  data: any;
-}
-
-export interface ItemAddedEvent extends CartEvent {
-  type: "ITEM_ADDED";
-  data: {
-    productId: string;
-    quantity: number;
-    price: number;
-  };
-}
-
-export interface ItemRemovedEvent extends CartEvent {
-  type: "ITEM_REMOVED";
-  data: {
-    productId: string;
-  };
-}
-
-export interface CartTransferredEvent extends CartEvent {
-  type: "CART_TRANSFERRED";
-  data: {
-    fromSessionId: string;
-    toUserId: string;
-  };
-}

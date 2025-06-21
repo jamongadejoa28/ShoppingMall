@@ -1,21 +1,27 @@
 // ========================================
-// CartController - Framework Layer
+// CartController - Framework Layer (InversifyJS DI 적용)
 // cart-service/src/frameworks/controllers/CartController.ts
 // ========================================
 
-import { Request, Response } from "express";
+import { Request, Response } from "express"; // express 명시적 임포트
+import { injectable, inject } from "inversify"; // Inversify import
+
 import { AddToCartUseCase } from "../../usecases/AddToCartUseCase";
 import { RemoveFromCartUseCase } from "../../usecases/RemoveFromCartUseCase";
 import { GetCartUseCase } from "../../usecases/GetCartUseCase";
 import { UpdateCartItemUseCase } from "../../usecases/UpdateCartItemUseCase";
 import { ClearCartUseCase } from "../../usecases/ClearCartUseCase";
 import { TransferCartUseCase } from "../../usecases/TransferCartUseCase";
+
+// 두 번째 코드의 장점인 커스텀 에러 클래스 임포트
 import {
   ProductNotFoundError,
   InsufficientStockError,
   InvalidRequestError,
   CartNotFoundError,
-} from "../../usecases/types";
+} from "../../usecases/types"; // 유스케이스 계층의 커스텀 에러 타입 임포트
+
+import { TYPES } from "../../infrastructure/di/types"; // TYPES 임포트 (Inversify 바인딩용)
 
 /**
  * CartController - 장바구니 API 엔드포인트 처리
@@ -31,13 +37,25 @@ import {
  * - SRP: 컨트롤러는 HTTP 계층만 담당
  * - DIP: 추상화(인터페이스)에 의존
  */
+@injectable() // InversifyJS 컨테이너에 의해 주입 가능하도록 설정
 export class CartController {
   constructor(
+    @inject(TYPES.AddToCartUseCase) // AddToCartUseCase 의존성 주입
     private readonly addToCartUseCase: AddToCartUseCase,
+
+    @inject(TYPES.RemoveFromCartUseCase) // RemoveFromCartUseCase 의존성 주입
     private readonly removeFromCartUseCase: RemoveFromCartUseCase,
+
+    @inject(TYPES.GetCartUseCase) // GetCartUseCase 의존성 주입
     private readonly getCartUseCase: GetCartUseCase,
+
+    @inject(TYPES.UpdateCartItemUseCase) // UpdateCartItemUseCase 의존성 주입
     private readonly updateCartItemUseCase: UpdateCartItemUseCase,
+
+    @inject(TYPES.ClearCartUseCase) // ClearCartUseCase 의존성 주입
     private readonly clearCartUseCase: ClearCartUseCase,
+
+    @inject(TYPES.TransferCartUseCase) // TransferCartUseCase 의존성 주입
     private readonly transferCartUseCase: TransferCartUseCase
   ) {}
 
@@ -51,7 +69,7 @@ export class CartController {
       const userId = req.user?.id; // JWT에서 추출
       const sessionId = req.sessionId; // 세션 미들웨어에서 추출
 
-      // 기본 유효성 검증
+      // 기본 유효성 검증 (두 번째 코드의 장점)
       if (!productId || !quantity) {
         res.status(400).json({
           success: false,
@@ -80,7 +98,7 @@ export class CartController {
       res.status(201).json({
         success: true,
         data: {
-          cart: response.cart.toJSON(),
+          cart: response.cart.toJSON(), // toJSON() 호출 유지
           message: response.message,
         },
       });
@@ -270,7 +288,7 @@ export class CartController {
   }
 
   /**
-   * 통합 에러 처리
+   * 통합 에러 처리 (두 번째 코드의 instanceof 기반 에러 처리 유지)
    */
   private handleError(error: unknown, res: Response): void {
     // TODO: 프로덕션에서는 적절한 로깅 시스템 사용 (Winston, Pino 등)
@@ -322,7 +340,7 @@ export class CartController {
   }
 }
 
-// Express Request 확장 타입 정의
+// Express Request 확장 타입 정의 (두 번째 코드의 장점 유지)
 declare global {
   namespace Express {
     interface Request {
