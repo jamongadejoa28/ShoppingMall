@@ -181,7 +181,7 @@ async function initializeTestDatabase(): Promise<void> {
       type: "postgres",
       host: "localhost",
       port: 5433, // 🔧 수정: Docker Compose의 PostgreSQL 포트와 일치
-      database: "cart_service_test", // 🔧 수정: Docker Compose의 DB 이름과 일치
+      database: "shopping_mall_carts_test", // 🔧 수정: Docker Compose의 DB 이름과 일치
       username: "test_user", // 🔧 수정: Docker Compose의 DB 유저와 일치
       password: "test_password", // 🔧 수정: Docker Compose의 DB 비밀번호와 일치
       synchronize: true, // 테스트에서는 자동 스키마 동기화
