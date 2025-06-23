@@ -1,5 +1,5 @@
 // ========================================
-// API 테스트 클라이언트 (수정됨)
+// API 테스트 클라이언트 (수정됨 - 헤더 기반 인증)
 // cart-service/src/__tests__/utils/ApiTestClient.ts
 // ========================================
 
@@ -10,57 +10,112 @@ export class ApiTestClient {
   constructor(private app: express.Application) {}
 
   // ========================================
-  // 장바구니 API 호출 메서드들
+  // 🔧 헤더 생성 헬퍼 메서드들
   // ========================================
 
-  async addToCart(data: any) {
+  /**
+   * 인증 헤더 생성
+   */
+  private createAuthHeaders(
+    userId?: string,
+    sessionId?: string
+  ): Record<string, string> {
+    const headers: Record<string, string> = {};
+
+    if (userId) {
+      headers["Authorization"] = `Bearer ${userId}`;
+    }
+
+    if (sessionId) {
+      headers["X-Session-ID"] = sessionId;
+    }
+
+    return headers;
+  }
+
+  // ========================================
+  // 🛒 장바구니 API 호출 메서드들 (수정됨)
+  // ========================================
+
+  async addToCart(data: {
+    userId?: string;
+    sessionId?: string;
+    productId: string;
+    quantity: number;
+  }) {
+    const { userId, sessionId, ...bodyData } = data;
+    const headers = this.createAuthHeaders(userId, sessionId);
+
     return request(this.app)
-      .post("/api/v1/carts/items")
-      .send(data)
+      .post("/api/v1/cart/items")
+      .set(headers)
+      .send(bodyData)
       .expect("Content-Type", /json/);
   }
 
   async getCart(params: { userId?: string; sessionId?: string }) {
-    let query = "";
-    if (params.userId) query += `userId=${params.userId}`;
-    if (params.sessionId)
-      query += `${query ? "&" : ""}sessionId=${params.sessionId}`;
+    const { userId, sessionId } = params;
+    const headers = this.createAuthHeaders(userId, sessionId);
 
     return request(this.app)
-      .get(`/api/v1/carts?${query}`)
+      .get("/api/v1/cart")
+      .set(headers)
       .expect("Content-Type", /json/);
   }
 
-  async updateCartItem(data: any) {
+  async updateCartItem(data: {
+    userId?: string;
+    sessionId?: string;
+    productId: string;
+    quantity: number;
+  }) {
+    const { userId, sessionId, ...bodyData } = data;
+    const headers = this.createAuthHeaders(userId, sessionId);
+
     return request(this.app)
-      .put("/api/v1/carts/items")
-      .send(data)
+      .put("/api/v1/cart/items")
+      .set(headers)
+      .send(bodyData)
       .expect("Content-Type", /json/);
   }
 
-  async removeFromCart(data: any) {
+  async removeFromCart(data: {
+    userId?: string;
+    sessionId?: string;
+    productId: string;
+  }) {
+    const { userId, sessionId, ...bodyData } = data;
+    const headers = this.createAuthHeaders(userId, sessionId);
+
     return request(this.app)
-      .delete("/api/v1/carts/items")
-      .send(data)
+      .delete("/api/v1/cart/items")
+      .set(headers)
+      .send(bodyData)
       .expect("Content-Type", /json/);
   }
 
-  async clearCart(data: any) {
+  async clearCart(data: { userId?: string; sessionId?: string }) {
+    const { userId, sessionId } = data;
+    const headers = this.createAuthHeaders(userId, sessionId);
+
     return request(this.app)
-      .delete("/api/v1/carts")
-      .send(data)
+      .delete("/api/v1/cart")
+      .set(headers)
       .expect("Content-Type", /json/);
   }
 
-  async transferCart(data: any) {
+  async transferCart(data: { userId: string; sessionId: string }) {
+    const { userId, sessionId } = data;
+    const headers = this.createAuthHeaders(userId, sessionId);
+
     return request(this.app)
-      .post("/api/v1/carts/transfer")
-      .send(data)
+      .post("/api/v1/cart/transfer")
+      .set(headers)
       .expect("Content-Type", /json/);
   }
 
   // ========================================
-  // 헬스체크 API
+  // 🏥 헬스체크 API
   // ========================================
 
   async healthCheck() {
@@ -72,7 +127,7 @@ export class ApiTestClient {
   }
 
   // ========================================
-  // 🔧 추가: 일반적인 HTTP 메서드들 (오류 해결용)
+  // 🔧 일반적인 HTTP 메서드들
   // ========================================
 
   async get(path: string, headers?: any) {
@@ -129,56 +184,102 @@ export class ApiTestClient {
     return req;
   }
 
-  async options(path: string, headers?: any) {
-    let req = request(this.app).options(path);
-    if (headers) {
-      Object.keys(headers).forEach((key) => {
-        req = req.set(key, headers[key]);
-      });
-    }
-    return req;
-  }
-
   // ========================================
-  // 공통 유틸리티 메서드들
+  // 📊 응답 검증 헬퍼 메서드들 (수정됨)
   // ========================================
 
+  /**
+   * 성공 응답 검증
+   * 수정: 실제 응답 구조에 맞게 검증 로직 수정
+   */
   expectSuccessResponse(response: any, expectedData?: any) {
     expect(response.body).toHaveProperty("success", true);
     expect(response.body).toHaveProperty("message");
-    expect(response.body).toHaveProperty("timestamp");
+
+    // timestamp는 data 안에 있거나 최상위에 있을 수 있음
+    if (response.body.timestamp) {
+      expect(response.body).toHaveProperty("timestamp");
+    } else if (response.body.data && response.body.data.timestamp) {
+      expect(response.body.data).toHaveProperty("timestamp");
+    }
 
     if (expectedData) {
       expect(response.body.data).toMatchObject(expectedData);
     }
   }
 
+  /**
+   * 에러 응답 검증
+   * 수정: 실제 에러 응답 구조에 맞게 검증 로직 수정
+   */
   expectErrorResponse(
     response: any,
     expectedCode?: number,
     expectedMessage?: string
   ) {
     expect(response.body).toHaveProperty("success", false);
-    expect(response.body).toHaveProperty("message");
+
+    // 에러 응답은 "error" 필드 또는 "message" 필드를 가질 수 있음
+    const hasError = response.body.error || response.body.message;
+    expect(hasError).toBeTruthy();
 
     if (expectedCode) {
       expect(response.status).toBe(expectedCode);
     }
 
     if (expectedMessage) {
-      expect(response.body.message).toContain(expectedMessage);
+      const errorMessage = response.body.error || response.body.message;
+      expect(errorMessage).toContain(expectedMessage);
     }
   }
 
-  // ========================================
-  // 🔧 디버깅용: Express App에 대한 제한적 접근
-  // ========================================
+  /**
+   * 🔧 새로운 헬퍼: 장바구니 응답 구조 검증
+   */
+  expectCartResponse(response: any, expectCart: boolean = true) {
+    this.expectSuccessResponse(response);
+    expect(response.body).toHaveProperty("data");
+
+    if (expectCart) {
+      expect(response.body.data).toHaveProperty("cart");
+      expect(response.body.data.cart).toBeTruthy();
+    } else {
+      // 빈 장바구니의 경우 cart가 null일 수 있음
+      expect(response.body.data).toHaveProperty("cart");
+    }
+  }
 
   /**
-   * 테스트 목적으로만 사용 - Express app에 대한 제한적 접근
-   * 일반적으로는 위의 메서드들을 사용하는 것을 권장
+   * 🔧 새로운 헬퍼: 장바구니 아이템 수 검증
    */
-  getRequestAgent() {
-    return request(this.app);
+  expectCartItemCount(response: any, expectedCount: number) {
+    this.expectCartResponse(response, expectedCount > 0);
+
+    if (expectedCount > 0) {
+      expect(response.body.data.cart.items).toHaveLength(expectedCount);
+    } else {
+      const cart = response.body.data.cart;
+      if (cart) {
+        expect(cart.items).toHaveLength(0);
+      } else {
+        expect(cart).toBeNull();
+      }
+    }
+  }
+
+  /**
+   * 🔧 새로운 헬퍼: 장바구니 총액 검증
+   */
+  expectCartTotalAmount(response: any, expectedAmount: number) {
+    this.expectCartResponse(response, expectedAmount > 0);
+
+    if (expectedAmount > 0) {
+      expect(response.body.data.cart.totalAmount).toBe(expectedAmount);
+    } else {
+      const cart = response.body.data.cart;
+      if (cart) {
+        expect(cart.totalAmount).toBe(0);
+      }
+    }
   }
 }

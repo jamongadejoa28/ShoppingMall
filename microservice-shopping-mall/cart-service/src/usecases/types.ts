@@ -1,5 +1,5 @@
 // ========================================
-// 타입 정의 및 인터페이스 - Types Layer (업데이트)
+// 타입 정의 및 인터페이스 - Types Layer (수정됨 - API 일관성 통일)
 // cart-service/src/usecases/types.ts
 // ========================================
 
@@ -21,7 +21,7 @@ export interface CartRepository {
 }
 
 // ========================================
-// 새로운 CacheService 인터페이스 (product-service 패턴)
+// CacheService 인터페이스
 // ========================================
 
 export interface CacheService {
@@ -48,7 +48,7 @@ export interface ProductServiceClient {
 }
 
 // ========================================
-// DTOs (Data Transfer Objects)
+// DTOs (Data Transfer Objects) - API 일관성 통일
 // ========================================
 
 // Add to Cart
@@ -116,7 +116,7 @@ export interface TransferCartResponse {
   message?: string;
 }
 
-// Clear Cart
+// Clear Cart - 🔧 수정: cart 프로퍼티 추가 (API 일관성)
 export interface ClearCartRequest {
   userId?: string;
   sessionId?: string;
@@ -124,6 +124,7 @@ export interface ClearCartRequest {
 
 export interface ClearCartResponse {
   success: boolean;
+  cart: Cart; // 🔧 추가: 비워진 장바구니 객체 반환
   message?: string;
 }
 

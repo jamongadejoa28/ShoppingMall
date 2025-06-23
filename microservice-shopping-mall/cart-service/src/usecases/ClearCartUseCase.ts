@@ -1,5 +1,5 @@
 // ========================================
-// ClearCartUseCase - 새로운 CacheService 구조 적용
+// ClearCartUseCase - 수정됨 (cart 객체 반환으로 API 일관성 통일)
 // cart-service/src/usecases/ClearCartUseCase.ts
 // ========================================
 
@@ -49,8 +49,10 @@ export class ClearCartUseCase {
       // 4. 캐시 업데이트
       await this.updateCache(request.userId, request.sessionId, savedCart);
 
+      // 🔧 수정: API 일관성을 위해 비워진 cart 객체 반환
       return {
         success: true,
+        cart: savedCart, // 비워진 장바구니 객체 반환
         message: "장바구니가 비워졌습니다.",
       };
     } catch (error) {
