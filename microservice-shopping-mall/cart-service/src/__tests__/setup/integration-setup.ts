@@ -20,7 +20,7 @@ beforeAll(async () => {
     type: "postgres", // 🔧 수정: 타입 명시
     host: "localhost",
     port: 5433,
-    database: "shopping_mall_carts_test",
+    database: "cart_service_test",
     username: "test_user",
     password: "test_password",
     synchronize: false, // 스키마는 이미 초기화됨
