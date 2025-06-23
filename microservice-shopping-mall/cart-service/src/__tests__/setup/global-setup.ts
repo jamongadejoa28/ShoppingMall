@@ -21,15 +21,11 @@ export default async (): Promise<void> => {
 
     // 2. DB 연결 대기 (헬스체크)
     console.log("⏳ [Database] PostgreSQL 준비 대기 중...");
-    // await waitForService("localhost", 5433, 30000);
-    // await waitForPostgresReady();
     await waitForPostgresHealthy();
 
     // 3. Redis 연결 대기
     console.log("⏳ [Cache] Redis 준비 대기 중...");
-    // await waitForService("localhost", 6380, 30000);
-    // await waitForPostgresReady();
-    await waitForPostgresHealthy();
+    await waitForRedisHealthy();
 
     // 4. 데이터베이스 스키마 초기화
     console.log("🗄️ [Database] 스키마 초기화 중...");
@@ -113,6 +109,38 @@ export default async (): Promise<void> => {
 //   throw new Error("❌ [Database] PostgreSQL이 완전히 준비되지 않았습니다.");
 // }
 
+/**
+ * 🔧 수정: Redis 헬스체크 대기 (더 견고한 체크)
+ */
+async function waitForRedisHealthy(
+  retries: number = 20,
+  delay: number = 3000
+): Promise<void> {
+  for (let i = 1; i <= retries; i++) {
+    try {
+      const result = execSync(
+        `docker inspect --format='{{.State.Health.Status}}' cart-service-redis-test`
+      )
+        .toString()
+        .trim();
+
+      // 🔧 변경: toLowerCase()로 대소문자 무시, includes()로 부분 문자열 매치
+      if (result.toLowerCase().includes("healthy")) {
+        console.log(`✅ [Cache] Redis 헬시 상태 확인됨 (시도 ${i})`);
+        return;
+      }
+
+      console.log(`⏳ [Cache] Redis 상태: ${result.trim()} (시도 ${i})`);
+    } catch (err) {
+      console.log(`❗ [Cache] docker inspect 실패 (시도 ${i})`);
+    }
+
+    await new Promise((res) => setTimeout(res, delay));
+  }
+
+  throw new Error("❌ [Cache] Redis 헬시 상태가 아님");
+}
+
 async function waitForPostgresHealthy(
   retries = 10,
   delay = 2000
@@ -147,36 +175,30 @@ async function waitForPostgresHealthy(
  * 테스트 데이터베이스 스키마 초기화
  */
 async function initializeTestDatabase(): Promise<void> {
+  let dataSource: DataSource | undefined;
   try {
-    // 🔧 수정: PostgreSQL 타입 명시적 지정
     const testDataSourceOptions: DataSourceOptions = {
-      type: "postgres", // 🔧 수정: 타입 명시
+      type: "postgres",
       host: "localhost",
-      port: 5433,
-      database: "cart_service_test",
-      username: "test_user",
-      password: "test_password",
+      port: 5433, // 🔧 수정: Docker Compose의 PostgreSQL 포트와 일치
+      database: "cart_service_test", // 🔧 수정: Docker Compose의 DB 이름과 일치
+      username: "test_user", // 🔧 수정: Docker Compose의 DB 유저와 일치
+      password: "test_password", // 🔧 수정: Docker Compose의 DB 비밀번호와 일치
       synchronize: true, // 테스트에서는 자동 스키마 동기화
       dropSchema: true, // 매번 깨끗한 상태로 시작
-      entities: [
-        // 🔧 수정: 엔티티 경로 추가
-        "src/adapters/entities/*.ts",
-      ],
-      logging: false, // 테스트 중 SQL 로그 비활성화
+      entities: ["src/adapters/entities/*.ts"], // 🔧 수정: 엔티티 경로 추가
+      logging: false,
     };
-
-    const testDataSource = new DataSource(testDataSourceOptions);
-
-    if (!testDataSource.isInitialized) {
-      await testDataSource.initialize();
-    }
-
-    console.log("✅ [Database] 테스트 스키마 초기화 완료");
-
-    // 연결 종료 (각 테스트에서 새로 연결)
-    await testDataSource.destroy();
+    dataSource = new DataSource(testDataSourceOptions);
+    await dataSource.initialize();
+    await dataSource.synchronize(true); // 스키마 동기화 (테이블 생성)
+    console.log("✅ [Database] PostgreSQL 스키마 동기화 완료");
   } catch (error) {
-    console.error("❌ [Database] 스키마 초기화 실패:", error);
+    console.error("❌ [Database] 테스트 데이터베이스 초기화 실패:", error);
     throw error;
+  } finally {
+    if (dataSource && dataSource.isInitialized) {
+      await dataSource.destroy();
+    }
   }
 }
