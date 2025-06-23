@@ -119,17 +119,17 @@ module.exports = {
   testEnvironmentOptions: {
     NODE_ENV: "test",
     DATABASE_HOST: "localhost",
-    DATABASE_PORT: "5433",
-    DATABASE_NAME: "cart_service_test",
-    DATABASE_USER: "test_user",
-    DATABASE_PASSWORD: "test_password",
+    DATABASE_PORT: "5433", // 🔧 수정: 통일
+    DATABASE_NAME: "shopping_mall_carts_test", // 🔧 수정: 통일
+    DATABASE_USER: "postgres",
+    DATABASE_PASSWORD: "rlarkdmf",
     REDIS_HOST: "localhost",
-    REDIS_PORT: "6380",
+    REDIS_PORT: "6380", // 🔧 수정: 통일
     REDIS_PASSWORD: "",
-    REDIS_DB: "0",
-    REDIS_KEY_PREFIX: "cart-service-test:",
+    REDIS_DB: "15", // 🔧 수정: 통일
+    REDIS_KEY_PREFIX: "test-cart-service:",
     CACHE_DEFAULT_TTL: "60",
-    LOG_LEVEL: "error", // 테스트 중 로그 최소화
+    LOG_LEVEL: "error",
   },
 
   // 리포터 설정
