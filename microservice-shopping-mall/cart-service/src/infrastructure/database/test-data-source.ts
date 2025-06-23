@@ -13,9 +13,9 @@ export const TestDataSource = new DataSource({
   type: "postgres",
   host: process.env.DB_HOST || "localhost",
   port: parseInt(process.env.DB_PORT || "5432"),
-  username: process.env.DB_USER || "postgres",
-  password: process.env.DB_PASSWORD || "rlarkdmf",
-  database: "shopping_mall_carts_test", // ✅ 하드코딩으로 명확하게
+  username: process.env.DB_USER || "test_user",
+  password: process.env.DB_PASSWORD || "test_password",
+  database: "cart_service_test", // ✅ 하드코딩으로 명확하게
   synchronize: false,
   logging: false,
   entities: [CartEntity, CartItemEntity],

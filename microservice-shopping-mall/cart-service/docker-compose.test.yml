@@ -13,7 +13,7 @@ services:
     image: postgres:15-alpine
     container_name: cart-service-postgres-test
     environment:
-      POSTGRES_DB: shopping_mall_carts_test
+      POSTGRES_DB: cart_service_test
       POSTGRES_USER: test_user
       POSTGRES_PASSWORD: test_password
       POSTGRES_HOST_AUTH_METHOD: trust
@@ -66,7 +66,7 @@ services:
       # 데이터베이스 설정
       DATABASE_HOST: postgres-test
       DATABASE_PORT: 5432
-      DATABASE_NAME: shopping_mall_carts_test
+      DATABASE_NAME: cart_service_test
       DATABASE_USER: test_user
       DATABASE_PASSWORD: test_password
 

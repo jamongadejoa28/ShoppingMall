@@ -184,6 +184,10 @@ export class ApiTestClient {
     return req;
   }
 
+  async options(path: string, headers: Record<string, string> = {}) {
+    return request(this.app).options(path).set(headers);
+  }
+
   // ========================================
   // 📊 응답 검증 헬퍼 메서드들 (수정됨)
   // ========================================

@@ -429,16 +429,17 @@ export class CartController {
     );
   }
 }
+export interface AuthenticatedUser {
+  id: string;
+  email: string;
+  role: string;
+}
 
 // Express Request 확장 타입 정의
 declare global {
   namespace Express {
     interface Request {
-      user?: {
-        id: string;
-        email?: string;
-        role?: string;
-      };
+      user?: AuthenticatedUser;
       sessionId?: string;
     }
   }
