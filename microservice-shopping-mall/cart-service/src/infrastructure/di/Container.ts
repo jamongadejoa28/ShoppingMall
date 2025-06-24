@@ -88,41 +88,90 @@ export class DIContainer {
    */
   private static async bindInfrastructure(container: Container): Promise<void> {
     try {
-      // 🔧 Redis 설정 먼저 바인딩
-      const redisConfig = RedisConfig.fromEnvironment();
-      container
-        .bind<RedisConfig>(TYPES.RedisConfig)
-        .toConstantValue(redisConfig);
-      console.log("📡 [CartService-DIContainer] Redis 설정 바인딩 완료");
+      console.log("🔧 [CartService-DIContainer] 인프라스트럭처 바인딩 시작...");
 
-      // 🔧 PostgreSQL DataSource 바인딩
+      // 🔧 Redis 설정 바인딩
       try {
-        const { AppDataSource } = await import("../database/data-source");
+        const redisConfig = RedisConfig.fromEnvironment();
+        container
+          .bind<RedisConfig>(TYPES.RedisConfig)
+          .toConstantValue(redisConfig);
+        console.log("✅ [CartService-DIContainer] Redis 설정 바인딩 완료");
+      } catch (redisError) {
+        console.error(
+          "❌ [CartService-DIContainer] Redis 설정 실패:",
+          redisError
+        );
+        throw redisError;
+      }
 
-        if (!AppDataSource.isInitialized) {
-          await AppDataSource.initialize();
-          console.log("🗄️ [CartService-DIContainer] PostgreSQL 연결 성공");
+      // 🔧 PostgreSQL DataSource 바인딩 (테스트 환경 대응)
+      try {
+        let dataSource: DataSource;
+
+        if (process.env.NODE_ENV === "test") {
+          // 테스트 환경: global.testDataSource 사용
+          console.log(
+            "🧪 [CartService-DIContainer] 테스트 환경: global.testDataSource 사용"
+          );
+
+          if (!global.testDataSource) {
+            throw new Error(
+              "global.testDataSource가 초기화되지 않았습니다. integration-setup.ts를 확인하세요."
+            );
+          }
+
+          if (!global.testDataSource.isInitialized) {
+            throw new Error("global.testDataSource가 초기화되지 않았습니다.");
+          }
+
+          dataSource = global.testDataSource;
+          console.log(
+            "✅ [CartService-DIContainer] 테스트 DataSource 연결 확인됨"
+          );
+        } else {
+          // 운영/개발 환경: AppDataSource 사용
+          console.log(
+            "🚀 [CartService-DIContainer] 운영 환경: AppDataSource 사용"
+          );
+
+          const { AppDataSource } = await import("../database/data-source");
+
+          if (!AppDataSource.isInitialized) {
+            await AppDataSource.initialize();
+            console.log(
+              "✅ [CartService-DIContainer] 운영 DataSource 초기화 완료"
+            );
+          }
+
+          dataSource = AppDataSource;
         }
 
         container
           .bind<DataSource>(TYPES.DataSource)
-          .toConstantValue(AppDataSource);
-        console.log("📦 [CartService-DIContainer] DataSource 바인딩 완료");
+          .toConstantValue(dataSource);
+        console.log("✅ [CartService-DIContainer] DataSource 바인딩 완료");
       } catch (dbError) {
-        console.error("❌ [CartService-DIContainer] DB 연결 실패:", dbError);
-
-        // 🔧 테스트 환경에서는 DB 연결 실패를 허용
-        if (process.env.NODE_ENV === "test") {
-          console.warn(
-            "⚠️ [CartService-DIContainer] 테스트 환경: DB 바인딩 스킵"
-          );
-        } else {
-          throw dbError;
-        }
+        console.error(
+          "❌ [CartService-DIContainer] DataSource 바인딩 실패:",
+          dbError
+        );
+        console.error("   - 환경:", process.env.NODE_ENV);
+        console.error(
+          "   - global.testDataSource 존재:",
+          !!global.testDataSource
+        );
+        console.error(
+          "   - global.testDataSource 초기화:",
+          global.testDataSource?.isInitialized
+        );
+        throw dbError;
       }
+
+      console.log("🎉 [CartService-DIContainer] 인프라스트럭처 바인딩 완료");
     } catch (error) {
       console.error(
-        "❌ [CartService-DIContainer] 인프라스트럭처 바인딩 실패:",
+        "❌ [CartService-DIContainer] 인프라스트럭처 바인딩 전체 실패:",
         error
       );
       throw error;

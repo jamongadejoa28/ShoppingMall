@@ -35,6 +35,23 @@ export class TestAppBuilder {
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
 
+    // 🔧 추가: 보안 헤더 설정 (Helmet 대신 수동 설정)
+    this.app.use((req, res, next) => {
+      // 기본 보안 헤더들
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("X-Frame-Options", "DENY");
+      res.setHeader("X-XSS-Protection", "1; mode=block");
+      res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+      
+      // CSP 설정 (테스트 환경용)
+      res.setHeader(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+      );
+
+      next();
+    });
+
     // 테스트용 인증 미들웨어 (JWT 토큰 파싱)
     this.app.use(this.createMockAuthMiddleware());
 
@@ -49,8 +66,17 @@ export class TestAppBuilder {
         "Access-Control-Allow-Headers",
         "Content-Type, Authorization, X-Session-ID"
       );
+      
+      // OPTIONS 요청 처리
+      if (req.method === "OPTIONS") {
+        res.status(200).end();
+        return;
+      }
+      
       next();
     });
+
+    console.log("✅ [TestAppBuilder] 보안 미들웨어 설정 완료");
   }
 
   /**
