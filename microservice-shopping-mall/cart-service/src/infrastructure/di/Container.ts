@@ -110,25 +110,30 @@ export class DIContainer {
         let dataSource: DataSource;
 
         if (process.env.NODE_ENV === "test") {
-          // 테스트 환경: global.testDataSource 사용
+          // 테스트 환경: global.testDataSource 또는 직접 생성
           console.log(
-            "🧪 [CartService-DIContainer] 테스트 환경: global.testDataSource 사용"
+            "🧪 [CartService-DIContainer] 테스트 환경: DataSource 초기화"
           );
 
-          if (!global.testDataSource) {
-            throw new Error(
-              "global.testDataSource가 초기화되지 않았습니다. integration-setup.ts를 확인하세요."
-            );
+          if (global.testDataSource && global.testDataSource.isInitialized) {
+            console.log("✅ [CartService-DIContainer] global.testDataSource 사용");
+            dataSource = global.testDataSource;
+          } else {
+            console.log("⚠️ [CartService-DIContainer] global.testDataSource 없음, 직접 생성");
+            
+            // 테스트용 DataSource 직접 생성
+            const { TestDataSource } = await import("../database/test-data-source");
+            
+            if (!TestDataSource.isInitialized) {
+              await TestDataSource.initialize();
+              console.log("✅ [CartService-DIContainer] 테스트 DataSource 초기화 완료");
+            }
+            
+            dataSource = TestDataSource;
+            
+            // global에 저장
+            global.testDataSource = dataSource;
           }
-
-          if (!global.testDataSource.isInitialized) {
-            throw new Error("global.testDataSource가 초기화되지 않았습니다.");
-          }
-
-          dataSource = global.testDataSource;
-          console.log(
-            "✅ [CartService-DIContainer] 테스트 DataSource 연결 확인됨"
-          );
         } else {
           // 운영/개발 환경: AppDataSource 사용
           console.log(
@@ -212,15 +217,13 @@ export class DIContainer {
         "🛍️ [CartService-DIContainer] ProductServiceClient(Mock) 바인딩 완료"
       );
 
-      // 🔧 CacheService 바인딩 (간단한 팩토리 방식)
+      // 🔧 CacheService 바인딩 (항상 실제 Redis 사용)
       container
         .bind<CacheService>(TYPES.CacheService)
         .toDynamicValue(() => {
           try {
-            // RedisConfig를 직접 가져와서 CacheService 생성
             const redisConfig = container.get<RedisConfig>(TYPES.RedisConfig);
 
-            // RedisConfig에서 설정을 추출해서 CacheServiceImpl 생성
             const connectionConfig = {
               host: redisConfig.getConnectionConfig().host,
               port: redisConfig.getConnectionConfig().port,
@@ -229,21 +232,13 @@ export class DIContainer {
               keyPrefix: redisConfig.getConnectionConfig().keyPrefix,
             };
 
+            console.log(`🔗 [CartService-DIContainer] Redis CacheService 연결: ${connectionConfig.host}:${connectionConfig.port}/${connectionConfig.db}`);
             return new CacheServiceImpl(connectionConfig);
           } catch (error) {
             console.error(
               "❌ [CartService-DIContainer] CacheService 생성 실패:",
               error
             );
-
-            // 🔧 테스트 환경에서는 Mock CacheService 반환
-            if (process.env.NODE_ENV === "test") {
-              console.warn(
-                "⚠️ [CartService-DIContainer] 테스트 환경: Mock CacheService 사용"
-              );
-              return new MockCacheService();
-            }
-
             throw error;
           }
         })

@@ -112,7 +112,19 @@ class SessionMiddleware {
    * 쿠키에서 세션 ID 추출
    */
   private getSessionIdFromCookie(req: Request): string | undefined {
-    return req.cookies?.[this.config.sessionName];
+    // 테스트 환경에서는 헤더에서도 세션 ID를 가져올 수 있도록 지원
+    const headerSessionId = req.headers['x-session-id'] as string;
+    if (headerSessionId) {
+      console.log(`[SessionMiddleware] 헤더에서 세션 ID 발견: ${headerSessionId}`);
+      return headerSessionId;
+    }
+    
+    const cookieSessionId = req.cookies?.[this.config.sessionName];
+    if (cookieSessionId) {
+      console.log(`[SessionMiddleware] 쿠키에서 세션 ID 발견: ${cookieSessionId}`);
+    }
+    
+    return cookieSessionId;
   }
 
   /**

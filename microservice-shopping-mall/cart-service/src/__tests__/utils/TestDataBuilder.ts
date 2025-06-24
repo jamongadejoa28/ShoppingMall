@@ -6,6 +6,7 @@
 import { Cart } from "../../entities/Cart";
 import { CartItem } from "../../entities/CartItem";
 import { ProductInfo } from "../../usecases/types"; // 🔧 추가: 타입 명시
+import { randomUUID } from "crypto";
 
 export class TestDataBuilder {
   // ========================================
@@ -157,24 +158,37 @@ export class TestDataBuilder {
     };
   }
 
+
   // ========================================
-  // 테스트 사용자 데이터
+  // ID 생성 헬퍼 메서드들
   // ========================================
 
+  /**
+   * UUID 형식의 사용자 ID 생성
+   */
   static generateUserId(): string {
-    return `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    // UUID v4 형식으로 생성
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
   }
 
+  /**
+   * 세션 ID 생성
+   */
   static generateSessionId(): string {
-    return `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    // 세션 ID는 미들웨어에서 요구하는 sess_UUID 형식으로 생성
+    const uuid = randomUUID();
+    return `sess_${uuid}`;
   }
 
+  /**
+   * UUID 형식의 상품 ID 생성
+   */
   static generateProductId(): string {
-    return `product-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  }
-
-  static generateCartId(): string {
-    return `cart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    return this.generateUserId(); // UUID 형식으로 통일
   }
 
   // ========================================

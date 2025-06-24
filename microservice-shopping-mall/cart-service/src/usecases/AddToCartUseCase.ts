@@ -132,6 +132,7 @@ export class AddToCartUseCase {
 
     // 장바구니가 없으면 새로 생성
     if (!cart) {
+      // ✅ 로그인한 사용자가 있으면 사용자 장바구니를 우선 생성
       if (userId) {
         cart = Cart.createForUser(userId);
       } else if (sessionId) {

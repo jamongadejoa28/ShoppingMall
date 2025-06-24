@@ -157,38 +157,28 @@ export class TestAppBuilder {
       });
     });
 
-    // Cart Controller 라우트 설정
+    // Cart Controller 라우트 설정 - 실제 cartRoutes 사용
     try {
       const cartController = this.container.get<CartController>(
         TYPES.CartController
       );
 
-      // 🔧 수정: API 경로를 /api/v1/cart/*로 통일
-      this.app.post(
-        "/api/v1/cart/items",
-        cartController.addToCart.bind(cartController)
-      );
-      this.app.get("/api/v1/cart", cartController.getCart.bind(cartController));
-      this.app.put(
-        "/api/v1/cart/items",
-        cartController.updateCartItem.bind(cartController)
-      );
-      this.app.delete(
-        "/api/v1/cart/items",
-        cartController.removeFromCart.bind(cartController)
-      );
-      this.app.delete(
-        "/api/v1/cart",
-        cartController.clearCart.bind(cartController)
-      );
-      this.app.post(
-        "/api/v1/cart/transfer",
-        cartController.transferCart.bind(cartController)
-      );
+      // 실제 cartRoutes import 및 사용
+      try {
+        const { createCartRoutes } = require("../../frameworks/routes/cartRoutes");
+        const cartRouter = createCartRoutes(cartController);
+        
+        // /api/v1/cart 경로에 실제 라우터 마운트
+        this.app.use("/api/v1/cart", cartRouter);
 
-      console.log("✅ [TestAppBuilder] CartController 라우트 바인딩 성공");
+        console.log("✅ [TestAppBuilder] CartController 라우트 바인딩 성공");
+      } catch (routeError) {
+        console.error("❌ [TestAppBuilder] cartRoutes 로드 실패:", routeError);
+        throw routeError;
+      }
     } catch (error) {
       console.error("❌ [TestAppBuilder] CartController 바인딩 실패:", error);
+      console.error("Error stack:", error instanceof Error ? error.stack : String(error));
 
       // fallback 라우트들 (Controller가 없을 경우)
       this.app.post("/api/v1/cart/items", (req, res) => {
@@ -196,6 +186,7 @@ export class TestAppBuilder {
           success: false,
           message: "CartController not available in test environment",
           error: "CONTROLLER_NOT_FOUND",
+          details: error instanceof Error ? error.message : String(error),
           timestamp: new Date().toISOString(),
         });
       });
@@ -205,6 +196,7 @@ export class TestAppBuilder {
           success: false,
           message: "CartController not available in test environment",
           error: "CONTROLLER_NOT_FOUND",
+          details: error instanceof Error ? error.message : String(error),
           timestamp: new Date().toISOString(),
         });
       });
@@ -214,11 +206,11 @@ export class TestAppBuilder {
         (path) => {
           ["PUT", "DELETE", "POST"].forEach((method) => {
             if (method === "PUT")
-              this.app.put(path, this.createFallbackHandler());
+              this.app.put(path, this.createFallbackHandler(error));
             if (method === "DELETE")
-              this.app.delete(path, this.createFallbackHandler());
+              this.app.delete(path, this.createFallbackHandler(error));
             if (method === "POST" && path.includes("transfer"))
-              this.app.post(path, this.createFallbackHandler());
+              this.app.post(path, this.createFallbackHandler(error));
           });
         }
       );
@@ -228,12 +220,13 @@ export class TestAppBuilder {
   /**
    * Fallback 핸들러 생성
    */
-  private createFallbackHandler() {
+  private createFallbackHandler(error?: any) {
     return (req: Request, res: Response) => {
       res.status(500).json({
         success: false,
         message: "CartController not available in test environment",
         error: "CONTROLLER_NOT_FOUND",
+        details: error?.message || "Unknown error",
         timestamp: new Date().toISOString(),
       });
     };

@@ -69,13 +69,13 @@ export class ApiTestClient {
     productId: string;
     quantity: number;
   }) {
-    const { userId, sessionId, ...bodyData } = data;
+    const { userId, sessionId, productId, quantity } = data;
     const headers = this.createAuthHeaders(userId, sessionId);
 
     return request(this.app)
-      .put("/api/v1/cart/items")
+      .put(`/api/v1/cart/items/${productId}`)
       .set(headers)
-      .send(bodyData)
+      .send({ quantity })
       .expect("Content-Type", /json/);
   }
 
@@ -84,13 +84,12 @@ export class ApiTestClient {
     sessionId?: string;
     productId: string;
   }) {
-    const { userId, sessionId, ...bodyData } = data;
+    const { userId, sessionId, productId } = data;
     const headers = this.createAuthHeaders(userId, sessionId);
 
     return request(this.app)
-      .delete("/api/v1/cart/items")
+      .delete(`/api/v1/cart/items/${productId}`)
       .set(headers)
-      .send(bodyData)
       .expect("Content-Type", /json/);
   }
 
@@ -232,7 +231,7 @@ export class ApiTestClient {
     }
 
     if (expectedMessage) {
-      const errorMessage = response.body.error || response.body.message;
+      const errorMessage = response.body.message || response.body.error;
       expect(errorMessage).toContain(expectedMessage);
     }
   }

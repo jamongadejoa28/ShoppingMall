@@ -11,12 +11,12 @@ dotenv.config({ path: ".env.test" });
 
 export const TestDataSource = new DataSource({
   type: "postgres",
-  host: process.env.DB_HOST || "localhost",
-  port: parseInt(process.env.DB_PORT || "5432"),
-  username: process.env.DB_USER || "test_user",
-  password: process.env.DB_PASSWORD || "test_password",
-  database: "cart_service_test", // ✅ 하드코딩으로 명확하게
-  synchronize: false,
+  host: process.env.DATABASE_HOST || "localhost",
+  port: parseInt(process.env.DATABASE_PORT || "5433"),
+  username: process.env.DATABASE_USER || "test_user",
+  password: process.env.DATABASE_PASSWORD || "test_password",
+  database: process.env.DATABASE_NAME || "cart_service_test",
+  synchronize: true, // 테스트 환경에서는 자동 스키마 동기화
   logging: false,
   entities: [CartEntity, CartItemEntity],
 

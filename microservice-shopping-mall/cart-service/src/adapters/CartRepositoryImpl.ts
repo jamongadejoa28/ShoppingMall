@@ -24,6 +24,8 @@ export class CartRepositoryImpl implements CartRepository {
   }
 
   async save(cart: Cart): Promise<Cart> {
+    console.log(`🔍 [SAVE] Saving cart ${cart.getId()}: userId=${cart.getUserId()}, sessionId=${cart.getSessionId()}, items=${cart.getItems().length}`);
+    
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -31,31 +33,29 @@ export class CartRepositoryImpl implements CartRepository {
     try {
       // ✅ 1단계: Cart만 저장 (아이템 제외)
       const cartEntity = CartEntity.fromDomain(cart);
-
-      // ✅ transferToUser 시 sessionId를 명시적으로 null 처리
-      if (cart.isPersisted() && cart.getUserId() && !cart.getSessionId()) {
-        await queryRunner.manager.query(
-          "UPDATE carts SET user_id = $1, session_id = NULL, updated_at = NOW() WHERE id = $2",
-          [cart.getUserId(), cart.getId()]
-        );
-      }
-
+      console.log(`🔍 [SAVE] CartEntity: userId=${cartEntity.userId}, sessionId=${cartEntity.sessionId}`);
+      
       const savedCartEntity = await queryRunner.manager.save(
         CartEntity,
         cartEntity
       );
 
-      // ✅ 2단계: 기존 아이템들 삭제 (업데이트인 경우)
-      if (cart.isPersisted()) {
-        await queryRunner.manager.query(
-          "DELETE FROM cart_items WHERE cart_id = $1",
-          [savedCartEntity.id]
-        );
-      }
+      console.log(`🔍 [SAVE] SavedCartEntity: id=${savedCartEntity.id}, userId=${savedCartEntity.userId}, sessionId=${savedCartEntity.sessionId}`);
+
+      // ✅ 2단계: 기존 아이템들 삭제 (모든 경우)
+      const deleteResult = await queryRunner.manager.query(
+        "DELETE FROM cart_items WHERE cart_id = $1",
+        [savedCartEntity.id]
+      );
+
+      console.log(`🔍 [SAVE] Deleted ${deleteResult[1] || 0} existing items`);
 
       // ✅ 3단계: 새로운 아이템들을 raw SQL로 삽입
       const items = cart.getItems();
+      console.log(`🔍 [SAVE] Inserting ${items.length} items`);
+      
       for (const item of items) {
+        console.log(`🔍 [SAVE] Inserting item: ${item.getProductId()}, qty=${item.getQuantity()}`);
         await queryRunner.manager.query(
           `
           INSERT INTO cart_items (id, cart_id, product_id, quantity, price, added_at)
@@ -72,17 +72,39 @@ export class CartRepositoryImpl implements CartRepository {
         );
       }
 
+      // ✅ 4단계: 저장된 데이터를 동일한 transaction 내에서 조회해서 반환
+      const itemEntities = await queryRunner.manager.query(
+        "SELECT * FROM cart_items WHERE cart_id = $1",
+        [savedCartEntity.id]
+      );
+
+      console.log(`🔍 [SAVE] Found ${itemEntities.length} items after insert`);
+
       await queryRunner.commitTransaction();
 
-      // ✅ 4단계: 저장된 데이터 다시 조회해서 반환
-      const result = await this.findById(savedCartEntity.id);
-      if (result) {
-        result.markAsPersisted();
-        return result;
-      }
+      // Domain 객체로 변환
+      const cartItems = itemEntities.map((item: any) => {
+        return new CartItem({
+          cartId: item.cart_id,
+          productId: item.product_id,
+          quantity: item.quantity,
+          price: parseFloat(item.price),
+          addedAt: item.added_at,
+        });
+      });
 
-      cart.markAsPersisted();
-      return cart;
+      const result = new Cart({
+        id: savedCartEntity.id,
+        userId: savedCartEntity.userId || undefined,
+        sessionId: savedCartEntity.sessionId || undefined,
+        items: cartItems,
+        createdAt: savedCartEntity.createdAt,
+        updatedAt: savedCartEntity.updatedAt,
+      });
+
+      result.markAsPersisted();
+      console.log(`🔍 [SAVE] Returning cart with ${result.getItems().length} items`);
+      return result;
     } catch (error: any) {
       await queryRunner.rollbackTransaction();
       console.error("❌ [CartRepository] 저장 오류:", error);
@@ -166,8 +188,10 @@ export class CartRepositoryImpl implements CartRepository {
   }
 
   async findBySessionId(sessionId: string): Promise<Cart | null> {
+    console.log(`🔍 [FIND_SESSION] Looking for sessionId: ${sessionId}`);
     try {
       if (!sessionId || sessionId.trim().length === 0) {
+        console.log(`🔍 [FIND_SESSION] Invalid sessionId`);
         return null;
       }
 
@@ -175,6 +199,12 @@ export class CartRepositoryImpl implements CartRepository {
         where: { sessionId },
         order: { updatedAt: "DESC" },
       });
+
+      console.log(`🔍 [FIND_SESSION] Found cart entity:`, cartEntity ? {
+        id: cartEntity.id,
+        sessionId: cartEntity.sessionId,
+        userId: cartEntity.userId
+      } : null);
 
       if (!cartEntity) {
         return null;

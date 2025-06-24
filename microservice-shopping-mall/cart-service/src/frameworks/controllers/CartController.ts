@@ -63,6 +63,7 @@ export class CartController {
       const userId = req.user?.id;
       const sessionId = req.sessionId;
 
+
       // 🔧 수정: 더 상세한 유효성 검증
       if (!productId || !quantity) {
         this.sendErrorResponse(
@@ -78,8 +79,8 @@ export class CartController {
         this.sendErrorResponse(
           res,
           400,
-          "수량은 1 이상의 정수여야 합니다",
-          "INVALID_QUANTITY"
+          "수량은 1 이상이어야 합니다",
+          "VALIDATION_ERROR"
         );
         return;
       }
@@ -112,11 +113,11 @@ export class CartController {
 
   /**
    * 장바구니에서 상품 제거
-   * DELETE /api/v1/cart/items
+   * DELETE /api/v1/cart/items/:productId
    */
   async removeFromCart(req: Request, res: Response): Promise<void> {
     try {
-      const { productId } = req.body; // 🔧 수정: body에서 productId 추출
+      const productId = req.params.productId; // URL 파라미터에서 가져오기
       const userId = req.user?.id;
       const sessionId = req.sessionId;
 
@@ -192,11 +193,12 @@ export class CartController {
 
   /**
    * 장바구니 아이템 수량 변경
-   * PUT /api/v1/cart/items
+   * PUT /api/v1/cart/items/:productId
    */
   async updateCartItem(req: Request, res: Response): Promise<void> {
     try {
-      const { productId, quantity } = req.body;
+      const productId = req.params.productId; // URL 파라미터에서 가져오기
+      const { quantity } = req.body; // body에서는 quantity만 가져오기
       const userId = req.user?.id;
       const sessionId = req.sessionId;
 
@@ -214,8 +216,8 @@ export class CartController {
         this.sendErrorResponse(
           res,
           400,
-          "수량은 1 이상의 정수여야 합니다",
-          "INVALID_QUANTITY"
+          "수량은 1 이상이어야 합니다",
+          "VALIDATION_ERROR"
         );
         return;
       }
@@ -420,12 +422,18 @@ export class CartController {
       });
     }
 
-    // 예상하지 못한 에러
+    // 예상하지 못한 에러 - 테스트 환경에서는 더 상세한 정보 제공
+    const isTestEnvironment = process.env.NODE_ENV === "test";
     this.sendErrorResponse(
       res,
       500,
       "서버 내부 오류가 발생했습니다",
-      "INTERNAL_SERVER_ERROR"
+      "INTERNAL_SERVER_ERROR",
+      isTestEnvironment ? {
+        originalError: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        context: context
+      } : undefined
     );
   }
 }

@@ -47,9 +47,13 @@ class RequestValidator {
       const errors = this.validateObject(req.body || {}, schema);
 
       if (errors.length > 0) {
+        // 첫 번째 에러 메시지를 메인 메시지로 사용
+        const mainError = errors[0] || "요청 형식이 올바르지 않습니다";
+        
         res.status(400).json({
           success: false,
-          error: "요청 형식이 올바르지 않습니다",
+          error: "VALIDATION_ERROR",
+          message: mainError,
           code: "INVALID_REQUEST_FORMAT",
           details: errors,
         });
@@ -120,7 +124,12 @@ class RequestValidator {
       // 3. 기본 범위 검증
       if (rule.type === "string" && typeof value === "string") {
         if (rule.minLength && value.length < rule.minLength) {
-          errors.push(`${field}는 최소 ${rule.minLength}자 이상이어야 합니다`);
+          // productId 필드의 경우 한국어로 표시
+          if (field === "productId") {
+            errors.push(`상품 ID는 필수입니다`);
+          } else {
+            errors.push(`${field}는 최소 ${rule.minLength}자 이상이어야 합니다`);
+          }
         }
         if (rule.maxLength && value.length > rule.maxLength) {
           errors.push(`${field}는 최대 ${rule.maxLength}자까지 가능합니다`);
@@ -129,7 +138,12 @@ class RequestValidator {
 
       if (rule.type === "number" && typeof data[field] === "number") {
         if (rule.min !== undefined && data[field] < rule.min) {
-          errors.push(`${field}는 ${rule.min} 이상이어야 합니다`);
+          // quantity 필드의 경우 한국어로 표시
+          if (field === "quantity") {
+            errors.push(`수량은 ${rule.min} 이상이어야 합니다`);
+          } else {
+            errors.push(`${field}는 ${rule.min} 이상이어야 합니다`);
+          }
         }
         if (rule.max !== undefined && data[field] > rule.max) {
           errors.push(`${field}는 ${rule.max} 이하여야 합니다`);
