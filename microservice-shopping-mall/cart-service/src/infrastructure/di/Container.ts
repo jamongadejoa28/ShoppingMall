@@ -115,9 +115,9 @@ export class DIContainer {
             "🧪 [CartService-DIContainer] 테스트 환경: DataSource 초기화"
           );
 
-          if (global.testDataSource && global.testDataSource.isInitialized) {
+          if ((global as any).testDataSource && (global as any).testDataSource.isInitialized) {
             console.log("✅ [CartService-DIContainer] global.testDataSource 사용");
-            dataSource = global.testDataSource;
+            dataSource = (global as any).testDataSource;
           } else {
             console.log("⚠️ [CartService-DIContainer] global.testDataSource 없음, 직접 생성");
             
@@ -132,7 +132,7 @@ export class DIContainer {
             dataSource = TestDataSource;
             
             // global에 저장
-            global.testDataSource = dataSource;
+            (global as any).testDataSource = dataSource;
           }
         } else {
           // 운영/개발 환경: AppDataSource 사용
@@ -164,11 +164,11 @@ export class DIContainer {
         console.error("   - 환경:", process.env.NODE_ENV);
         console.error(
           "   - global.testDataSource 존재:",
-          !!global.testDataSource
+          !!(global as any).testDataSource
         );
         console.error(
           "   - global.testDataSource 초기화:",
-          global.testDataSource?.isInitialized
+          (global as any).testDataSource?.isInitialized
         );
         throw dbError;
       }

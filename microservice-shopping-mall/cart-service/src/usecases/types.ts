@@ -38,6 +38,22 @@ export interface CacheService {
   disconnect?(): Promise<void>;
 }
 
+// ========================================
+// CartCache 인터페이스 (RedisCartCacheImpl용)
+// ========================================
+
+export interface CartCache {
+  setCart(cartId: string, cart: Cart): Promise<void>;
+  getCart(cartId: string): Promise<Cart | null>;
+  setUserCartId(userId: string, cartId: string): Promise<void>;
+  getUserCartId(userId: string): Promise<string | null>;
+  setSessionCartId(sessionId: string, cartId: string): Promise<void>;
+  getSessionCartId(sessionId: string): Promise<string | null>;
+  deleteCart(cartId: string): Promise<void>;
+  deleteUserCart(userId: string): Promise<void>;
+  deleteSessionCart(sessionId: string): Promise<void>;
+}
+
 export interface ProductServiceClient {
   getProduct(productId: string): Promise<ProductInfo | null>;
   checkInventory(

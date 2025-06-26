@@ -202,18 +202,17 @@ export class TestAppBuilder {
       });
 
       // 다른 엔드포인트들도 동일하게 fallback 설정
-      ["/api/v1/cart/items", "/api/v1/cart", "/api/v1/cart/transfer"].forEach(
-        (path) => {
-          ["PUT", "DELETE", "POST"].forEach((method) => {
-            if (method === "PUT")
-              this.app.put(path, this.createFallbackHandler(error));
-            if (method === "DELETE")
-              this.app.delete(path, this.createFallbackHandler(error));
-            if (method === "POST" && path.includes("transfer"))
-              this.app.post(path, this.createFallbackHandler(error));
-          });
-        }
-      );
+      // PUT /api/v1/cart/items/:productId - 상품 수량 변경
+      this.app.put("/api/v1/cart/items/:productId", this.createFallbackHandler(error));
+      
+      // DELETE /api/v1/cart/items/:productId - 상품 제거
+      this.app.delete("/api/v1/cart/items/:productId", this.createFallbackHandler(error));
+      
+      // DELETE /api/v1/cart - 장바구니 비우기
+      this.app.delete("/api/v1/cart", this.createFallbackHandler(error));
+      
+      // POST /api/v1/cart/transfer - 장바구니 이전
+      this.app.post("/api/v1/cart/transfer", this.createFallbackHandler(error));
     }
   }
 
