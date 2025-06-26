@@ -5,7 +5,7 @@ import { useCartStore } from '@frameworks/state/cartStore';
 import { ROUTES } from '@shared/constants/routes';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { CartPage } from '../CartPage';
+import CartPage from '../CartPage';
 
 jest.mock('@adapters/api/OrderApiAdapter');
 

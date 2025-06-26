@@ -13,7 +13,7 @@ const api = axios.create({
 
 export class OrderApiAdapter implements IOrderRepository {
   async createOrder(data: CreateOrderData): Promise<Order> {
-    const token = useAuthStore.getState().token;
+    const token = useAuthStore.getState().accessToken;
     if (!token) {
       throw new Error('인증 토큰이 없습니다. 로그인이 필요합니다.');
     }

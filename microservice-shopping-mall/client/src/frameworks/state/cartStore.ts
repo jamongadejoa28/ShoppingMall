@@ -1,34 +1,16 @@
 // ========================================
-// cartStore - 안정화 버전 (가격 포맷 수정 + shallow 최적화)
+// cartStore - 기본 장바구니 상태 관리 (동기 버전)
 // client/src/frameworks/state/cartStore.ts
 // ========================================
 
 import { shallow } from 'zustand/shallow';
 import { createWithEqualityFn } from 'zustand/traditional';
+import { persist } from 'zustand/middleware';
 import { CartProduct } from '../../types/cart-type/CartProduct';
 
 // ========================================
 // Types & Interfaces
 // ========================================
-
-export interface Product {
-  id: string;
-  name: string;
-  price: number;
-  brand: string;
-  sku: string;
-  slug: string;
-  category: {
-    id: string;
-    name: string;
-    slug: string;
-  };
-  inventory: {
-    availableQuantity: number;
-    status: string;
-  };
-  imageUrls: string[];
-}
 
 export interface CartItem {
   product: CartProduct;
@@ -37,11 +19,16 @@ export interface CartItem {
 }
 
 export interface CartState {
+  // State
   items: CartItem[];
+
+  // Actions
   addItem: (product: CartProduct, quantity: number) => void;
   removeItem: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
   clearCart: () => void;
+
+  // Getters
   getTotalQuantity: () => number;
   getTotalPrice: () => number;
   getItemCount: () => number;
@@ -52,10 +39,10 @@ export interface CartState {
 }
 
 // ========================================
-// 유효성 검증 함수들 (테스트 호환성 유지)
+// 유효성 검증 함수들
 // ========================================
 
-function validateProduct(product: Product): void {
+function validateProduct(product: CartProduct): void {
   if (!product) {
     throw new Error('상품 정보가 필요합니다');
   }
@@ -83,7 +70,7 @@ function validateQuantity(quantity: number): void {
 }
 
 function validateStock(
-  product: Product,
+  product: CartProduct,
   requestedQuantity: number,
   currentCartQuantity: number = 0
 ): void {
@@ -94,114 +81,131 @@ function validateStock(
 }
 
 // ========================================
-// Zustand Store 생성 (shallow 최적화 + 안정성)
+// 기본 장바구니 Store (동기 버전)
 // ========================================
 
-export const useCartStore = createWithEqualityFn<CartState>(
-  (set, get) => ({
-    // 초기 상태
-    items: [],
+export const useCartStore = createWithEqualityFn<CartState>()(
+  persist(
+    (set, get) => ({
+      // 초기 상태
+      items: [],
 
-    // Actions (완전한 유효성 검증 포함)
-    addItem: (product, quantity) => {
-      // 🔧 완전한 유효성 검증 (테스트 호환성)
-      validateProduct(product);
-      validateQuantity(quantity);
+      // ========================================
+      // Actions (동기적)
+      // ========================================
 
-      const currentItems = get().items;
-      const existingItemIndex = currentItems.findIndex(
-        item => item.product.id === product.id
-      );
+      addItem: (product, quantity) => {
+        try {
+          validateProduct(product);
+          validateQuantity(quantity);
 
-      if (existingItemIndex >= 0) {
-        const existingItem = currentItems[existingItemIndex];
-        const newQuantity = existingItem.quantity + quantity;
+          const currentItems = get().items;
+          const existingItemIndex = currentItems.findIndex(
+            item => item.product.id === product.id
+          );
 
-        // 재고 확인 (기존 수량 고려)
-        validateStock(product, quantity, existingItem.quantity);
+          if (existingItemIndex >= 0) {
+            const existingItem = currentItems[existingItemIndex];
+            const newQuantity = existingItem.quantity + quantity;
+            validateStock(product, quantity, existingItem.quantity);
 
-        const updatedItems = [...currentItems];
-        updatedItems[existingItemIndex] = {
-          ...existingItem,
-          quantity: newQuantity,
-        };
-        set({ items: updatedItems });
-      } else {
-        // 새로운 상품 추가
-        validateStock(product, quantity);
+            const updatedItems = [...currentItems];
+            updatedItems[existingItemIndex] = {
+              ...existingItem,
+              quantity: newQuantity,
+            };
+            set({ items: updatedItems });
+          } else {
+            validateStock(product, quantity);
+            const newItem: CartItem = {
+              product,
+              quantity,
+              addedAt: new Date(),
+            };
+            set({ items: [...currentItems, newItem] });
+          }
+        } catch (error) {
+          console.error('장바구니 추가 실패:', error);
+          throw error;
+        }
+      },
 
-        const newItem: CartItem = {
-          product,
-          quantity,
-          addedAt: new Date(), // 🔧 Date 객체로 복원
-        };
-        set({ items: [...currentItems, newItem] });
-      }
-    },
+      removeItem: productId => {
+        set(state => ({
+          items: state.items.filter(item => item.product.id !== productId),
+        }));
+      },
 
-    removeItem: productId => {
-      set(state => ({
-        items: state.items.filter(item => item.product.id !== productId),
-      }));
-    },
+      updateQuantity: (productId, quantity) => {
+        if (quantity <= 0) {
+          get().removeItem(productId);
+          return;
+        }
 
-    updateQuantity: (productId, quantity) => {
-      if (quantity <= 0) {
-        get().removeItem(productId);
-        return;
-      }
+        try {
+          validateQuantity(quantity);
+          const itemToUpdate = get().items.find(
+            item => item.product.id === productId
+          );
+          if (itemToUpdate) {
+            validateStock(itemToUpdate.product, quantity);
+          }
 
-      // 🔧 완전한 유효성 검증
-      validateQuantity(quantity);
+          set(state => ({
+            items: state.items.map(item =>
+              item.product.id === productId ? { ...item, quantity } : item
+            ),
+          }));
+        } catch (error) {
+          console.error('수량 변경 실패:', error);
+          throw error;
+        }
+      },
 
-      const itemToUpdate = get().items.find(
-        item => item.product.id === productId
-      );
-      if (itemToUpdate) {
-        validateStock(itemToUpdate.product, quantity);
-      }
+      clearCart: () => {
+        set({ items: [] });
+      },
 
-      set(state => ({
-        items: state.items.map(item =>
-          item.product.id === productId ? { ...item, quantity } : item
-        ),
-      }));
-    },
+      // ========================================
+      // Getters (동기적 메서드)
+      // ========================================
 
-    clearCart: () => {
-      set({ items: [] });
-    },
+      getTotalQuantity: () => {
+        const items = get().items;
+        return items.reduce((sum, item) => sum + item.quantity, 0);
+      },
 
-    // 🔧 Getters (안정화된 구현)
-    getTotalQuantity: () => {
-      const items = get().items;
-      return items.reduce((sum, item) => sum + item.quantity, 0);
-    },
+      getTotalPrice: () => {
+        const items = get().items;
+        return items.reduce(
+          (sum, item) => sum + item.product.price * item.quantity,
+          0
+        );
+      },
 
-    getTotalPrice: () => {
-      const items = get().items;
-      return items.reduce(
-        (sum, item) => sum + item.product.price * item.quantity,
-        0
-      );
-    },
-
-    getItemCount: () => get().items.length,
-    isEmpty: () => get().items.length === 0,
-    getItem: productId =>
-      get().items.find(item => item.product.id === productId),
-    hasItem: productId =>
-      get().items.some(item => item.product.id === productId),
-    getItemQuantity: productId => {
-      const item = get().items.find(item => item.product.id === productId);
-      return item ? item.quantity : 0;
-    },
-  }),
+      getItemCount: () => get().items.length,
+      isEmpty: () => get().items.length === 0,
+      getItem: productId =>
+        get().items.find(item => item.product.id === productId),
+      hasItem: productId =>
+        get().items.some(item => item.product.id === productId),
+      getItemQuantity: productId => {
+        const item = get().items.find(item => item.product.id === productId);
+        return item ? item.quantity : 0;
+      },
+    }),
+    {
+      name: 'cart-storage',
+      partialize: state => ({
+        items: state.items,
+      }),
+    }
+  ),
   Object.is
 );
 
 // ========================================
-// 🔥 최적화된 Individual Hooks (shallow 사용)
+// 최적화된 Individual Hooks (shallow 사용)
 // ========================================
 
 // 단일 값 selector들 (shallow 불필요)
@@ -216,7 +220,7 @@ export const useCartItemCount = () =>
 
 export const useCartEmpty = () => useCartStore(state => state.isEmpty());
 
-// 🔧 객체 반환 hooks (shallow 적용으로 무한 리렌더링 방지)
+// 객체 반환 hooks (shallow 적용으로 무한 리렌더링 방지)
 export const useCartActions = () => {
   return useCartStore(
     state => ({
@@ -225,22 +229,19 @@ export const useCartActions = () => {
       updateQuantity: state.updateQuantity,
       clearCart: state.clearCart,
     }),
-    shallow // 🔥 무한 리렌더링 방지
+    shallow
   );
 };
 
 export const useCartItem = (productId: string) => {
-  return useCartStore(
-    state => {
-      const item = state.items.find(item => item.product.id === productId);
-      return {
-        item,
-        quantity: item ? item.quantity : 0,
-        hasItem: !!item,
-      };
-    },
-    shallow // 🔥 무한 리렌더링 방지
-  );
+  return useCartStore(state => {
+    const item = state.items.find(item => item.product.id === productId);
+    return {
+      item,
+      quantity: item ? item.quantity : 0,
+      hasItem: !!item,
+    };
+  }, shallow);
 };
 
 export const useCartSummary = () => {
@@ -251,6 +252,6 @@ export const useCartSummary = () => {
       itemCount: state.getItemCount(),
       isEmpty: state.isEmpty(),
     }),
-    shallow // 🔥 무한 리렌더링 방지
+    shallow
   );
 };
