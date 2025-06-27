@@ -17,27 +17,27 @@ declare global {
       only: Describe;
       skip: Describe;
       each: (
-        cases: readonly any[][]
-      ) => (name: string, fn: (...args: any[]) => void) => void;
+        cases: readonly unknown[][]
+      ) => (name: string, fn: (...args: unknown[]) => void) => void;
     }
 
     interface It {
       (
         name: string,
-        fn?: (done?: DoneCallback) => void | Promise<any>,
+        fn?: (done?: DoneCallback) => void | Promise<unknown>,
         timeout?: number
       ): void;
       only: It;
       skip: It;
       todo: (name: string) => void;
       each: (
-        cases: readonly any[][]
-      ) => (name: string, fn: (...args: any[]) => void) => void;
+        cases: readonly unknown[][]
+      ) => (name: string, fn: (...args: unknown[]) => void) => void;
     }
 
     interface Lifecycle {
       (
-        fn: (done?: DoneCallback) => void | Promise<any>,
+        fn: (done?: DoneCallback) => void | Promise<unknown>,
         timeout?: number
       ): void;
     }
@@ -45,18 +45,18 @@ declare global {
     type DoneCallback = (reason?: string | Error) => void;
 
     interface Expect {
-      <T = any>(actual: T): jest.Matchers<void, T>;
+      <T = unknown>(actual: T): jest.Matchers<void, T>;
       assertions(num: number): void;
       hasAssertions(): void;
-      any(classType: any): any;
-      anything(): any;
-      arrayContaining<E = any>(arr: E[]): any;
-      objectContaining(obj: Record<string, any>): any;
-      stringContaining(str: string): any;
-      stringMatching(str: string | RegExp): any;
+      any(classType: unknown): unknown;
+      anything(): unknown;
+      arrayContaining<E = unknown>(arr: E[]): unknown;
+      objectContaining(obj: Record<string, unknown>): unknown;
+      stringContaining(str: string): unknown;
+      stringMatching(str: string | RegExp): unknown;
     }
 
-    interface Matchers<R, T = {}> {
+    interface Matchers<R, T = Record<string, never>> {
       toBe(expected: T): R;
       toEqual(expected: T): R;
       toStrictEqual(expected: T): R;
@@ -70,23 +70,23 @@ declare global {
       toBeLessThan(expected: number): R;
       toBeLessThanOrEqual(expected: number): R;
       toBeCloseTo(expected: number, precision?: number): R;
-      toContain(expected: any): R;
-      toContainEqual(expected: any): R;
+      toContain(expected: unknown): R;
+      toContainEqual(expected: unknown): R;
       toHaveLength(expected: number): R;
       toMatch(expected: string | RegExp): R;
-      toMatchObject(expected: Record<string, any>): R;
+      toMatchObject(expected: Record<string, unknown>): R;
       toThrow(expected?: string | RegExp | Error): R;
       toThrowError(expected?: string | RegExp | Error): R;
       toHaveBeenCalled(): R;
       toHaveBeenCalledTimes(expected: number): R;
-      toHaveBeenCalledWith(...expected: any[]): R;
-      toHaveBeenLastCalledWith(...expected: any[]): R;
-      toHaveBeenNthCalledWith(nthCall: number, ...expected: any[]): R;
+      toHaveBeenCalledWith(...expected: unknown[]): R;
+      toHaveBeenLastCalledWith(...expected: unknown[]): R;
+      toHaveBeenNthCalledWith(nthCall: number, ...expected: unknown[]): R;
       toHaveReturned(): R;
       toHaveReturnedTimes(expected: number): R;
-      toHaveReturnedWith(expected: any): R;
-      toHaveLastReturnedWith(expected: any): R;
-      toHaveNthReturnedWith(nthCall: number, expected: any): R;
+      toHaveReturnedWith(expected: unknown): R;
+      toHaveLastReturnedWith(expected: unknown): R;
+      toHaveNthReturnedWith(nthCall: number, expected: unknown): R;
       resolves: Matchers<Promise<R>, T>;
       rejects: Matchers<Promise<R>, T>;
       not: Matchers<R, T>;

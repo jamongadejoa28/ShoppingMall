@@ -9,6 +9,7 @@ import {
   GetCartResponse,
   CartRepository,
   CacheService,
+  ProductServiceClient,
   InvalidRequestError,
 } from "./types";
 import { TYPES } from "../infrastructure/di/types";
@@ -19,7 +20,8 @@ import { CartItem } from "../entities/CartItem";
 export class GetCartUseCase {
   constructor(
     @inject(TYPES.CartRepository) private cartRepository: CartRepository,
-    @inject(TYPES.CacheService) private cacheService: CacheService
+    @inject(TYPES.CacheService) private cacheService: CacheService,
+    @inject(TYPES.ProductServiceClient) private productServiceClient: ProductServiceClient
   ) {}
 
   async execute(request: GetCartRequest): Promise<GetCartResponse> {
@@ -82,9 +84,15 @@ export class GetCartUseCase {
         }
       }
 
+      // 장바구니가 있으면 상품 정보도 함께 조회
+      let enrichedCart = cart;
+      if (cart && cart.getItems().length > 0) {
+        enrichedCart = await this.enrichCartWithProductInfo(cart);
+      }
+
       return {
         success: true,
-        cart,
+        cart: enrichedCart,
         message: cart ? "장바구니를 조회했습니다." : "장바구니가 비어있습니다.",
       };
     } catch (error) {
@@ -167,6 +175,62 @@ export class GetCartUseCase {
     } catch (error) {
       console.error("[GetCartUseCase] 캐시 저장 오류:", error);
       // 캐시 저장 실패는 무시 (graceful degradation)
+    }
+  }
+
+  /**
+   * 장바구니에 상품 정보를 추가
+   */
+  private async enrichCartWithProductInfo(cart: Cart): Promise<Cart> {
+    try {
+      const items = cart.getItems();
+      const enrichedItems: CartItem[] = [];
+
+      // 각 아이템에 대해 상품 정보 조회
+      for (const item of items) {
+        try {
+          const productInfo = await this.productServiceClient.getProduct(item.getProductId());
+          
+          if (productInfo) {
+            // 상품 정보가 있으면 CartItem에 추가 정보 설정
+            const enrichedItem = new CartItem({
+              id: item.getId(),
+              cartId: item.getCartId(),
+              productId: item.getProductId(),
+              quantity: item.getQuantity(),
+              price: item.getPrice(),
+              addedAt: item.getAddedAt()
+            });
+            
+            // 상품 정보를 아이템에 추가 (실제로는 별도 필드나 메타데이터로 관리)
+            (enrichedItem as any).productInfo = productInfo;
+            enrichedItems.push(enrichedItem);
+          } else {
+            // 상품 정보가 없으면 기존 아이템 그대로 추가
+            enrichedItems.push(item);
+          }
+        } catch (error) {
+          console.warn(`상품 정보 조회 실패 (productId: ${item.getProductId()}):`, error);
+          // 상품 정보 조회 실패해도 기존 아이템은 유지
+          enrichedItems.push(item);
+        }
+      }
+
+      // 새로운 Cart 인스턴스 생성 (enriched items 포함)
+      const enrichedCart = new Cart({
+        id: cart.getId(),
+        userId: cart.getUserId(),
+        sessionId: cart.getSessionId(),
+        items: enrichedItems,
+        createdAt: cart.getCreatedAt(),
+        updatedAt: cart.getUpdatedAt()
+      });
+
+      return enrichedCart;
+    } catch (error) {
+      console.error('장바구니 상품 정보 추가 중 오류:', error);
+      // 실패 시 원본 cart 반환
+      return cart;
     }
   }
 

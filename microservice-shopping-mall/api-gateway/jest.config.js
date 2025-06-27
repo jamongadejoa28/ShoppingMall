@@ -1,5 +1,3 @@
-// api-gateway/jest.config.js
-
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
@@ -12,6 +10,7 @@ module.exports = {
         // ts-jest 설정을 여기에 직접 정의 (deprecated globals 방식 대신)
         useESM: false,
         tsconfig: {
+          extends: './tsconfig.json',
           types: ['node', 'jest', '@types/jest'],
         },
       },

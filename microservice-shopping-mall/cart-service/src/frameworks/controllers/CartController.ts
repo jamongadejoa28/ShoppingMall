@@ -183,9 +183,67 @@ export class CartController {
         ? "장바구니를 조회했습니다"
         : "장바구니가 비어있습니다";
 
-      this.sendSuccessResponse(res, 200, message, {
-        cart: response.cart?.toJSON() || null,
-      });
+      // 클라이언트가 기대하는 형태로 변환
+      let cartData = null;
+      if (response.cart) {
+        const cartJson = response.cart.toJSON();
+        cartData = {
+          id: cartJson.id,
+          userId: cartJson.userId,
+          sessionId: cartJson.sessionId,
+          items: cartJson.items.map((item: any) => {
+            // 상품 정보가 있으면 포함
+            if (item.productInfo || (item as any).productInfo) {
+              const productInfo = item.productInfo || (item as any).productInfo;
+              return {
+                product: {
+                  id: productInfo.id,
+                  name: productInfo.name,
+                  price: productInfo.price,
+                  brand: productInfo.brand || '',
+                  sku: productInfo.sku || '',
+                  slug: productInfo.slug || '',
+                  category: {
+                    id: productInfo.category || '',
+                    name: productInfo.category || '',
+                    slug: productInfo.category || '',
+                  },
+                  inventory: {
+                    availableQuantity: productInfo.availableQuantity || 0,
+                    status: productInfo.inventory?.status || 'in_stock',
+                  },
+                  imageUrls: productInfo.imageUrls || [productInfo.imageUrl || ''],
+                },
+                quantity: item.quantity,
+                addedAt: item.addedAt,
+              };
+            } else {
+              // 상품 정보가 없으면 기본 구조로
+              return {
+                product: {
+                  id: item.productId,
+                  name: `상품 ${item.productId}`,
+                  price: item.price,
+                  brand: '',
+                  sku: '',
+                  slug: '',
+                  category: { id: '', name: '', slug: '' },
+                  inventory: { availableQuantity: 0, status: 'unknown' },
+                  imageUrls: [],
+                },
+                quantity: item.quantity,
+                addedAt: item.addedAt,
+              };
+            }
+          }),
+          totalAmount: cartJson.items.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0),
+          totalQuantity: cartJson.items.reduce((sum: number, item: any) => sum + item.quantity, 0),
+          createdAt: cartJson.createdAt,
+          updatedAt: cartJson.updatedAt,
+        };
+      }
+
+      this.sendSuccessResponse(res, 200, message, cartData);
     } catch (error) {
       this.handleError(error, res, "장바구니 조회");
     }

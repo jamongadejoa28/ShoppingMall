@@ -20,6 +20,7 @@ import {
 // Implementations
 import { CartRepositoryImpl } from "../../adapters/CartRepositoryImpl";
 import { MockProductServiceClient } from "../../adapters/MockProductServiceClient";
+import { HttpProductServiceClient } from "../../adapters/ProductServiceClient";
 import { CacheServiceImpl } from "../../adapters/CacheServiceImpl";
 
 // Config
@@ -208,14 +209,26 @@ export class DIContainer {
    */
   private static bindServices(container: Container): void {
     try {
-      // 🔧 ProductServiceClient 바인딩 (Mock 사용)
-      container
-        .bind<ProductServiceClient>(TYPES.ProductServiceClient)
-        .to(MockProductServiceClient)
-        .inSingletonScope();
-      console.log(
-        "🛍️ [CartService-DIContainer] ProductServiceClient(Mock) 바인딩 완료"
-      );
+      // 🔧 ProductServiceClient 바인딩 (환경에 따라 실제 또는 Mock 사용)
+      const useRealProductService = process.env.USE_REAL_PRODUCT_SERVICE !== 'false' && process.env.NODE_ENV !== 'test';
+      
+      if (useRealProductService) {
+        container
+          .bind<ProductServiceClient>(TYPES.ProductServiceClient)
+          .to(HttpProductServiceClient)
+          .inSingletonScope();
+        console.log(
+          "🛍️ [CartService-DIContainer] ProductServiceClient(Http) 바인딩 완료"
+        );
+      } else {
+        container
+          .bind<ProductServiceClient>(TYPES.ProductServiceClient)
+          .to(MockProductServiceClient)
+          .inSingletonScope();
+        console.log(
+          "🛍️ [CartService-DIContainer] ProductServiceClient(Mock) 바인딩 완료"
+        );
+      }
 
       // 🔧 CacheService 바인딩 (항상 실제 Redis 사용)
       container

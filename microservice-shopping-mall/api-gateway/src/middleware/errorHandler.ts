@@ -95,7 +95,7 @@ interface ErrorResponse {
   timestamp: string;
   requestId: string;
   stack?: string;
-  details?: any;
+  details?: unknown;
 }
 
 // ========================================
@@ -105,13 +105,12 @@ interface ErrorResponse {
 export const errorHandler = (
   error: Error,
   req: Request,
-  res: Response,
-  next: NextFunction
+  res: Response
 ): void => {
   let statusCode = 500;
   let message = 'Internal Server Error';
   let code = 'INTERNAL_ERROR';
-  let details: any = undefined;
+  let details: unknown = undefined;
 
   // AppError 인스턴스인 경우
   if (error instanceof AppError) {
@@ -235,7 +234,13 @@ export const notFoundHandler = (req: Request, res: Response): void => {
 // 비동기 함수 에러 캐처
 // ========================================
 
-export const asyncHandler = (fn: Function) => {
+export const asyncHandler = (
+  fn: (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) => Promise<void | Response>
+) => {
   return (req: Request, res: Response, next: NextFunction) => {
     Promise.resolve(fn(req, res, next)).catch(next);
   };
@@ -268,8 +273,11 @@ export const handleProcessExit = () => {
   });
 
   // 처리되지 않은 Promise 거부 핸들러
-  process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
-    logger.error('Unhandled Rejection', { reason, promise });
-    process.exit(1);
-  });
+  process.on(
+    'unhandledRejection',
+    (reason: unknown, promise: Promise<unknown>) => {
+      logger.error('Unhandled Rejection', { reason, promise });
+      process.exit(1);
+    }
+  );
 };

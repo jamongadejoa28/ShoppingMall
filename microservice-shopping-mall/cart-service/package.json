@@ -33,6 +33,7 @@
   "type": "commonjs",
   "dependencies": {
     "@types/ioredis": "^4.28.10",
+    "axios": "^1.10.0",
     "bcryptjs": "^3.0.2",
     "compression": "^1.8.0",
     "cors": "^2.8.5",
@@ -50,6 +51,7 @@
     "uuid": "^11.1.0"
   },
   "devDependencies": {
+    "@types/axios": "^0.9.36",
     "@types/bcryptjs": "^2.4.6",
     "@types/compression": "^1.8.1",
     "@types/cors": "^2.8.19",

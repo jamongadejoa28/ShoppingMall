@@ -162,6 +162,11 @@ export interface ProductInfo {
     status: "in_stock" | "low_stock" | "out_of_stock";
   };
   isActive: boolean;
+  // 추가 필드들
+  brand?: string;
+  sku?: string;
+  slug?: string;
+  imageUrls?: string[];
 }
 
 export interface InventoryCheckResult {

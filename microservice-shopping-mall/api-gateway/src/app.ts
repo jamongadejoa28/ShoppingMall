@@ -1,6 +1,7 @@
 // api-gateway/src/app.ts
 
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Response, NextFunction } from 'express';
+import axios from 'axios';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -56,7 +57,12 @@ app.use(
     origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Requested-With',
+      'X-Session-ID',
+    ],
   })
 );
 
@@ -177,16 +183,80 @@ app.use(`${API_VERSION}/users`, (req: any, res: Response) => {
   res.status(HTTP_STATUS.NOT_FOUND).json(response);
 });
 
-// 상품 라우트 (추후 Product Service로 프록시)
-app.use(`${API_VERSION}/products`, (req: any, res: Response) => {
-  const response: ApiResponse = {
-    success: false,
-    data: null,
-    error: 'Product Service는 아직 구현되지 않았습니다',
-    timestamp: getCurrentTimestamp(),
-    requestId: req.id,
-  };
-  res.status(HTTP_STATUS.NOT_FOUND).json(response);
+// 상품 라우트 (Product Service로 프록시)
+app.use(`${API_VERSION}/products`, async (req: any, res: Response) => {
+  try {
+    const productServiceUrl =
+      process.env.PRODUCT_SERVICE_URL || 'http://localhost:3003';
+    // Use axios directly
+
+    // 요청 헤더 복사
+    const headers = { ...req.headers };
+    delete headers.host; // host 헤더 제거
+
+    // Product Service로 프록시
+    const proxyResponse = await axios({
+      method: req.method,
+      url: `${productServiceUrl}/api/v1/products${req.url}`,
+      data: req.body,
+      headers,
+      params: req.query,
+    });
+
+    res.status(proxyResponse.status).json(proxyResponse.data);
+  } catch (error: any) {
+    const response: ApiResponse = {
+      success: false,
+      data: null,
+      error:
+        error.response?.data?.message ||
+        error.message ||
+        'Product Service 연결 실패',
+      timestamp: getCurrentTimestamp(),
+      requestId: req.id,
+    };
+    res
+      .status(error.response?.status || HTTP_STATUS.INTERNAL_SERVER_ERROR)
+      .json(response);
+  }
+});
+
+// 장바구니 라우트 (Cart Service로 프록시)
+app.use(`${API_VERSION}/cart`, async (req: any, res: Response) => {
+  try {
+    const cartServiceUrl =
+      process.env.CART_SERVICE_URL || 'http://localhost:3006';
+    // Use axios directly
+
+    // 요청 헤더 복사 (인증 정보 등)
+    const headers = { ...req.headers };
+    delete headers.host; // host 헤더 제거
+
+    // Cart Service로 프록시
+    const proxyResponse = await axios({
+      method: req.method,
+      url: `${cartServiceUrl}/api/v1/cart${req.url}`,
+      data: req.body,
+      headers,
+      params: req.query,
+    });
+
+    res.status(proxyResponse.status).json(proxyResponse.data);
+  } catch (error: any) {
+    const response: ApiResponse = {
+      success: false,
+      data: null,
+      error:
+        error.response?.data?.message ||
+        error.message ||
+        'Cart Service 연결 실패',
+      timestamp: getCurrentTimestamp(),
+      requestId: req.id,
+    };
+    res
+      .status(error.response?.status || HTTP_STATUS.INTERNAL_SERVER_ERROR)
+      .json(response);
+  }
 });
 
 // 주문 라우트 (추후 Order Service로 프록시)
