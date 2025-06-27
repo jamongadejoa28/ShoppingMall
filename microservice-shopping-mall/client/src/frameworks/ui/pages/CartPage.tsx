@@ -2,10 +2,11 @@
 // Clean Architecture: UI Pages Layer
 // 위치: client/src/frameworks/ui/pages/CartPage.tsx
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { CartApiAdapter } from '../../../adapters/api/CartApiAdapter';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 // =======================================
 // Types & Interfaces
@@ -60,7 +61,15 @@ const CartPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
-  const cartApi = new CartApiAdapter();
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    type: 'single' | 'bulk';
+    productId?: string;
+    productName?: string;
+  }>({ isOpen: false, type: 'single' });
+
+  // CartApiAdapter를 useMemo로 메모이제이션하여 재생성 방지
+  const cartApi = useMemo(() => new CartApiAdapter(), []);
 
   // =======================================
   // API Functions
@@ -94,27 +103,40 @@ const CartPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []); // cartApi 종속성 제거하여 무한 루프 방지
+  }, [cartApi]); // cartApi 종속성 추가
 
   const handleRemoveItem = useCallback(
-    async (productId: string) => {
-      try {
-        await cartApi.removeFromCart(productId);
-        toast.success('상품을 삭제했습니다.');
-        // 장바구니 다시 로드
-        fetchCart();
-        // 선택된 아이템에서 제거
-        setSelectedItems(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(productId);
-          return newSet;
-        });
-      } catch (error: any) {
-        toast.error(error.message || '상품 삭제 중 오류가 발생했습니다.');
-      }
+    async (productId: string, productName?: string) => {
+      setConfirmDialog({
+        isOpen: true,
+        type: 'single',
+        productId,
+        productName,
+      });
     },
-    [fetchCart]
+    []
   );
+
+  const confirmRemoveItem = useCallback(async () => {
+    if (!confirmDialog.productId) return;
+
+    try {
+      await cartApi.removeFromCart(confirmDialog.productId);
+      toast.success('상품을 삭제했습니다.');
+      // 장바구니 다시 로드
+      fetchCart();
+      // 선택된 아이템에서 제거
+      setSelectedItems(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(confirmDialog.productId!);
+        return newSet;
+      });
+    } catch (error: any) {
+      toast.error(error.message || '상품 삭제 중 오류가 발생했습니다.');
+    } finally {
+      setConfirmDialog({ isOpen: false, type: 'single' });
+    }
+  }, [confirmDialog.productId, fetchCart, cartApi]);
 
   // =======================================
   // Effects
@@ -147,12 +169,19 @@ const CartPage: React.FC = () => {
     }
   };
 
-  const handleRemoveSelected = async () => {
+  const handleRemoveSelected = useCallback(async () => {
     if (selectedItems.size === 0) {
       toast.error('삭제할 상품을 선택해주세요.');
       return;
     }
 
+    setConfirmDialog({
+      isOpen: true,
+      type: 'bulk',
+    });
+  }, [selectedItems]);
+
+  const confirmRemoveSelected = useCallback(async () => {
     try {
       // 선택된 상품들을 순차적으로 삭제
       const deletePromises = Array.from(selectedItems).map(productId =>
@@ -168,13 +197,16 @@ const CartPage: React.FC = () => {
       setSelectedItems(new Set());
     } catch (error: any) {
       toast.error(error.message || '상품 삭제 중 오류가 발생했습니다.');
+    } finally {
+      setConfirmDialog({ isOpen: false, type: 'bulk' });
     }
-  };
+  }, [selectedItems, cartApi, fetchCart]);
 
   const handleUpdateQuantity = useCallback(
     async (productId: string, newQuantity: number) => {
       if (newQuantity <= 0) {
-        return handleRemoveItem(productId);
+        const item = cart?.items.find(item => item.product.id === productId);
+        return handleRemoveItem(productId, item?.product.name);
       }
 
       try {
@@ -186,7 +218,7 @@ const CartPage: React.FC = () => {
         toast.error(error.message || '수량 변경 중 오류가 발생했습니다.');
       }
     },
-    [fetchCart, handleRemoveItem]
+    [fetchCart, handleRemoveItem, cartApi, cart]
   );
 
   const handleCheckout = () => {
@@ -357,7 +389,9 @@ const CartPage: React.FC = () => {
                       단가: {formatPrice(item.product.price)}
                     </p>
                     <button
-                      onClick={() => handleRemoveItem(item.product.id)}
+                      onClick={() =>
+                        handleRemoveItem(item.product.id, item.product.name)
+                      }
                       className="text-xs text-gray-400 hover:text-red-600 mt-2"
                     >
                       삭제
@@ -404,10 +438,36 @@ const CartPage: React.FC = () => {
               >
                 {selectedItems.size}개 상품 구매하기
               </button>
+              <Link
+                to="/products"
+                className="w-full mt-3 bg-gray-100 text-gray-700 py-3 rounded-lg font-medium hover:bg-gray-200 text-center block"
+              >
+                쇼핑 계속하기
+              </Link>
             </div>
           </div>
         </div>
       </div>
+
+      {/* 삭제 확인 다이얼로그 */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title="상품 삭제"
+        message={
+          confirmDialog.type === 'single'
+            ? `'${confirmDialog.productName || '선택한 상품'}'을 삭제하시겠습니까?`
+            : `선택한 ${selectedItems.size}개 상품을 삭제하시겠습니까?`
+        }
+        confirmText="삭제"
+        cancelText="취소"
+        confirmButtonClass="bg-red-600 hover:bg-red-700 text-white"
+        onConfirm={
+          confirmDialog.type === 'single'
+            ? confirmRemoveItem
+            : confirmRemoveSelected
+        }
+        onCancel={() => setConfirmDialog({ isOpen: false, type: 'single' })}
+      />
     </div>
   );
 };

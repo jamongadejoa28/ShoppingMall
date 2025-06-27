@@ -1,0 +1,32 @@
+
+> product-service@1.0.0 start
+> node dist/server.js
+
+🚀 [ProductService] 애플리케이션 초기화 시작...
+📦 [ProductService] DI Container 초기화 중...
+🔧 [DIContainer] 바인딩 시작...
+✅ [DIContainer] 설정 바인딩 완료
+[DatabaseConfig] PostgreSQL 연결 실패: Error: connect ECONNREFUSED 127.0.0.1:5432
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1636:16) {
+  errno: -111,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 5432
+}
+❌ [ProductService] 애플리케이션 초기화 실패: Error: connect ECONNREFUSED 127.0.0.1:5432
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1636:16) {
+  errno: -111,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 5432
+}
+❌ [ProductService] 서버 시작 실패: Error: connect ECONNREFUSED 127.0.0.1:5432
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1636:16) {
+  errno: -111,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 5432
+}

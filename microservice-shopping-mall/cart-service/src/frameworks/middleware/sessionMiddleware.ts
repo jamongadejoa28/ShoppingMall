@@ -72,14 +72,19 @@ class SessionMiddleware {
       // 2. 세션 ID가 없거나 유효하지 않으면 새로 생성
       if (!sessionId || !this.isValidSessionId(sessionId)) {
         sessionId = this.generateSessionId();
-        this.setSessionCookie(res, sessionId);
+        // 헤더 기반에서는 쿠키 설정 안함
+        if (!req.headers['x-session-id']) {
+          this.setSessionCookie(res, sessionId);
+        }
 
-        console.log(`[SessionMiddleware] 새 세션 생성: ${sessionId}`);
+        console.log(`[SessionMiddleware] 🆕 새 세션 생성: ${sessionId}`);
       } else {
-        // 기존 세션 갱신 (만료 시간 연장)
-        this.setSessionCookie(res, sessionId);
+        // 기존 세션 갱신 (헤더 기반에서는 쿠키 갱신 안함)
+        if (!req.headers['x-session-id']) {
+          this.setSessionCookie(res, sessionId);
+        }
 
-        console.log(`[SessionMiddleware] 기존 세션 갱신: ${sessionId}`);
+        console.log(`[SessionMiddleware] 🔄 기존 세션 사용: ${sessionId}`);
       }
 
       // 3. Request 객체에 세션 ID 추가
@@ -112,19 +117,22 @@ class SessionMiddleware {
    * 쿠키에서 세션 ID 추출
    */
   private getSessionIdFromCookie(req: Request): string | undefined {
-    // 테스트 환경에서는 헤더에서도 세션 ID를 가져올 수 있도록 지원
+    // 1. 헤더에서 세션 ID 확인 (우선순위 높음)
     const headerSessionId = req.headers['x-session-id'] as string;
     if (headerSessionId) {
-      console.log(`[SessionMiddleware] 헤더에서 세션 ID 발견: ${headerSessionId}`);
+      console.log(`[SessionMiddleware] ✅ 헤더에서 세션 ID 발견: ${headerSessionId}`);
       return headerSessionId;
     }
     
+    // 2. 쿠키에서 세션 ID 확인 (fallback)
     const cookieSessionId = req.cookies?.[this.config.sessionName];
     if (cookieSessionId) {
-      console.log(`[SessionMiddleware] 쿠키에서 세션 ID 발견: ${cookieSessionId}`);
+      console.log(`[SessionMiddleware] 🍪 쿠키에서 세션 ID 발견: ${cookieSessionId}`);
+      return cookieSessionId;
     }
     
-    return cookieSessionId;
+    console.log(`[SessionMiddleware] ❌ 세션 ID를 찾을 수 없음 (헤더, 쿠키 모두 없음)`);
+    return undefined;
   }
 
   /**
@@ -211,6 +219,7 @@ export function createDevelopmentSessionMiddleware() {
     secure: false, // HTTP에서도 동작 (로컬 개발용)
     sameSite: "lax",
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7일 (개발 편의성)
+    domain: "", // 도메인 설정 제거 (크로스 도메인 대응)
   });
 }
 

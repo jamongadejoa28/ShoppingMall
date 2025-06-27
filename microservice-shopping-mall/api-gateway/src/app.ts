@@ -228,9 +228,14 @@ app.use(`${API_VERSION}/cart`, async (req: any, res: Response) => {
       process.env.CART_SERVICE_URL || 'http://localhost:3006';
     // Use axios directly
 
-    // 요청 헤더 복사 (인증 정보 등)
+    // 요청 헤더 복사 (인증 정보, 세션 ID 등)
     const headers = { ...req.headers };
     delete headers.host; // host 헤더 제거
+    
+    // X-Session-ID 헤더가 있으면 전달
+    if (req.headers['x-session-id']) {
+      headers['x-session-id'] = req.headers['x-session-id'];
+    }
 
     // Cart Service로 프록시
     const proxyResponse = await axios({
@@ -240,6 +245,16 @@ app.use(`${API_VERSION}/cart`, async (req: any, res: Response) => {
       headers,
       params: req.query,
     });
+
+    // Set-Cookie 헤더 전달 (세션 관리를 위해 필수)
+    if (proxyResponse.headers['set-cookie']) {
+      // 쿠키의 도메인을 클라이언트 도메인으로 수정
+      const modifiedCookies = proxyResponse.headers['set-cookie'].map((cookie: string) => {
+        // 기존 도메인 제거하고 클라이언트가 접근할 수 있도록 수정
+        return cookie.replace(/Domain=[^;]+;?\s*/i, '');
+      });
+      res.set('Set-Cookie', modifiedCookies);
+    }
 
     res.status(proxyResponse.status).json(proxyResponse.data);
   } catch (error: any) {

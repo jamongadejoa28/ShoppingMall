@@ -65,6 +65,7 @@ interface UpdateQuantityRequest {
 export class CartApiAdapter {
   private readonly baseURL: string;
   private readonly timeout: number;
+  private readonly sessionStorageKey = 'cart_session_id';
 
   constructor() {
     // 환경에 따라 API Gateway URL 설정 (Cart Service 직접 호출 대신)
@@ -74,11 +75,36 @@ export class CartApiAdapter {
   }
 
   /**
+   * 세션 ID 관리
+   */
+  private getSessionId(): string {
+    let sessionId = localStorage.getItem(this.sessionStorageKey);
+    if (!sessionId) {
+      // 새 세션 ID 생성
+      sessionId = `sess_${this.generateUUID()}`;
+      localStorage.setItem(this.sessionStorageKey, sessionId);
+    }
+    return sessionId;
+  }
+
+  private generateUUID(): string {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(
+      /[xy]/g,
+      function (c) {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      }
+    );
+  }
+
+  /**
    * 인증 헤더 생성 (선택적)
    */
   private getAuthHeaders(): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      'X-Session-ID': this.getSessionId(), // 세션 ID 헤더 추가
     };
 
     // Zustand store에서 토큰 가져오기 (있으면 포함)

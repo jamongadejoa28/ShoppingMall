@@ -2,10 +2,12 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@frameworks/state/authStore';
 import { ROUTES } from '@shared/constants/routes';
+import { useCartCount } from '../../../../adapters/hooks/useCartCount';
 
 export const Header: React.FC = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated, logout } = useAuthStore();
+  const { count: cartCount } = useCartCount();
 
   const handleLogout = async () => {
     try {
@@ -59,6 +61,12 @@ export const Header: React.FC = () => {
                   d="M3 3h2l.4 2M7 13h10l4-8H5.4m2.6 8L6 5H3m4 8v2a2 2 0 002 2h8a2 2 0 002-2v-2"
                 />
               </svg>
+              {/* 장바구니 개수 배지 */}
+              {cartCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium">
+                  {cartCount > 99 ? '99+' : cartCount}
+                </span>
+              )}
             </Link>
 
             {/* 사용자 메뉴 */}
