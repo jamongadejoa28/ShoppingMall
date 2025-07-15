@@ -7,8 +7,10 @@ interface MockUserRepository {
   save: jest.Mock;
   findByEmail: jest.Mock;
   findById: jest.Mock;
-  update: jest.Mock; // 누락된 메서드 추가
-  delete: jest.Mock; // 누락된 메서드 추가
+  update: jest.Mock;
+  delete: jest.Mock;
+  findMany: jest.Mock;
+  getStatistics: jest.Mock;
 }
 
 // Email Service Mock
@@ -29,8 +31,10 @@ describe('RegisterUserUseCase', () => {
       save: jest.fn(),
       findByEmail: jest.fn(),
       findById: jest.fn(),
-      update: jest.fn(), // 누락된 메서드 추가
-      delete: jest.fn(), // 누락된 메서드 추가
+      update: jest.fn(),
+      delete: jest.fn(),
+      findMany: jest.fn(),
+      getStatistics: jest.fn(),
     };
 
     mockEmailService = {

@@ -11,7 +11,9 @@ import { RemoveFromCartUseCase } from "../../usecases/RemoveFromCartUseCase";
 import { GetCartUseCase } from "../../usecases/GetCartUseCase";
 import { UpdateCartItemUseCase } from "../../usecases/UpdateCartItemUseCase";
 import { ClearCartUseCase } from "../../usecases/ClearCartUseCase";
+import { DeleteCartUseCase } from "../../usecases/DeleteCartUseCase";
 import { TransferCartUseCase } from "../../usecases/TransferCartUseCase";
+import { CleanupSessionCartUseCase } from "../../usecases/CleanupSessionCartUseCase";
 
 import {
   ProductNotFoundError,
@@ -49,8 +51,14 @@ export class CartController {
     @inject(TYPES.ClearCartUseCase)
     private readonly clearCartUseCase: ClearCartUseCase,
 
+    @inject(TYPES.DeleteCartUseCase)
+    private readonly deleteCartUseCase: DeleteCartUseCase,
+
     @inject(TYPES.TransferCartUseCase)
-    private readonly transferCartUseCase: TransferCartUseCase
+    private readonly transferCartUseCase: TransferCartUseCase,
+
+    @inject(TYPES.CleanupSessionCartUseCase)
+    private readonly cleanupSessionCartUseCase: CleanupSessionCartUseCase
   ) {}
 
   /**
@@ -147,8 +155,8 @@ export class CartController {
         productId,
       });
 
-      this.sendSuccessResponse(res, 200, "상품이 장바구니에서 제거되었습니다", {
-        cart: response.cart.toJSON(),
+      this.sendSuccessResponse(res, 200, response.message || "작업이 완료되었습니다", {
+        cart: response.cart ? response.cart.toJSON() : null,
       });
     } catch (error) {
       this.handleError(error, res, "장바구니 상품 제거");
@@ -238,6 +246,7 @@ export class CartController {
           }),
           totalAmount: cartJson.items.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0),
           totalQuantity: cartJson.items.reduce((sum: number, item: any) => sum + item.quantity, 0),
+          uniqueItemCount: cartJson.uniqueItemCount || cartJson.items.length,
           createdAt: cartJson.createdAt,
           updatedAt: cartJson.updatedAt,
         };
@@ -300,9 +309,9 @@ export class CartController {
       this.sendSuccessResponse(
         res,
         200,
-        "장바구니 상품 수량이 변경되었습니다",
+        response.message || "작업이 완료되었습니다",
         {
-          cart: response.cart.toJSON(),
+          cart: response.cart ? response.cart.toJSON() : null,
         }
       );
     } catch (error) {
@@ -334,11 +343,41 @@ export class CartController {
         sessionId,
       });
 
-      this.sendSuccessResponse(res, 200, "장바구니가 비워졌습니다", {
-        cart: response.cart.toJSON(),
+      this.sendSuccessResponse(res, 200, response.message || "작업이 완료되었습니다", {
+        cart: response.cart ? response.cart.toJSON() : null,
       });
     } catch (error) {
       this.handleError(error, res, "장바구니 비우기");
+    }
+  }
+
+  /**
+   * 장바구니 완전 삭제 (클라이언트 종료시 사용)
+   * DELETE /api/v1/cart/delete
+   */
+  async deleteCart(req: Request, res: Response): Promise<void> {
+    try {
+      const userId = req.user?.id;
+      const sessionId = req.sessionId;
+
+      if (!userId && !sessionId) {
+        this.sendErrorResponse(
+          res,
+          400,
+          "사용자 ID 또는 세션 ID가 필요합니다",
+          "AUTH_REQUIRED"
+        );
+        return;
+      }
+
+      const response = await this.deleteCartUseCase.execute({
+        userId,
+        sessionId,
+      });
+
+      this.sendSuccessResponse(res, 200, response.message, {});
+    } catch (error) {
+      this.handleError(error, res, "장바구니 삭제");
     }
   }
 
@@ -381,6 +420,36 @@ export class CartController {
       });
     } catch (error) {
       this.handleError(error, res, "장바구니 이전");
+    }
+  }
+
+  /**
+   * 세션 장바구니 정리 (클라이언트 종료시 사용)
+   * POST /api/v1/cart/cleanup-session
+   */
+  async cleanupSessionCart(req: Request, res: Response): Promise<void> {
+    try {
+      const sessionId = req.sessionId || req.body.sessionId;
+
+      if (!sessionId) {
+        this.sendErrorResponse(
+          res,
+          400,
+          "세션 ID가 필요합니다",
+          "SESSION_ID_REQUIRED"
+        );
+        return;
+      }
+
+      const response = await this.cleanupSessionCartUseCase.execute({
+        sessionId,
+      });
+
+      this.sendSuccessResponse(res, 200, response.message, {
+        deletedCartId: response.deletedCartId,
+      });
+    } catch (error) {
+      this.handleError(error, res, "세션 장바구니 정리");
     }
   }
 

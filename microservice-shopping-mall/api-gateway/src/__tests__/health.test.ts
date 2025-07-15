@@ -1,6 +1,11 @@
 // api-gateway/src/__tests__/health.test.ts
 
-import { createLogger } from '@shopping-mall/shared';
+const createLogger = (name: string) => ({
+  info: (message: string, ...args: any[]) => console.log(`[INFO][${name}] ${message}`, ...args),
+  error: (message: string, ...args: any[]) => console.error(`[ERROR][${name}] ${message}`, ...args),
+  warn: (message: string, ...args: any[]) => console.warn(`[WARN][${name}] ${message}`, ...args),
+  debug: (message: string, ...args: any[]) => console.debug(`[DEBUG][${name}] ${message}`, ...args),
+});
 
 describe('Health Check Tests', () => {
   it('should create logger instance', () => {

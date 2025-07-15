@@ -48,19 +48,8 @@ export class UserEntity {
   role!: 'customer' | 'admin';
 
   @Column({ type: 'varchar', length: 20, nullable: true })
-  phone?: string | undefined;
+  phoneNumber?: string | undefined;
 
-  @Column({ type: 'text', nullable: true })
-  address?: string | undefined;
-
-  @Column({ type: 'boolean', default: false })
-  isEmailVerified!: boolean;
-
-  @Column({
-    type: process.env.NODE_ENV === 'test' ? 'datetime' : 'timestamp',
-    nullable: true,
-  })
-  emailVerifiedAt?: Date | undefined;
 
   @Column({ type: 'boolean', default: true })
   isActive!: boolean;
@@ -79,6 +68,15 @@ export class UserEntity {
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   refreshToken?: string | undefined;
+
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  postalCode?: string | undefined;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  address?: string | undefined;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  detailAddress?: string | undefined;
 
   @CreateDateColumn({
     type: process.env.NODE_ENV === 'test' ? 'datetime' : 'timestamp',
@@ -105,22 +103,25 @@ export class UserEntity {
     entity.email = user.email;
     entity.password = user.password;
     entity.role = user.role;
-    entity.isEmailVerified = user.isEmailVerified;
     entity.isActive = user.isActive;
     entity.createdAt = user.createdAt;
     entity.updatedAt = user.updatedAt;
 
     // Optional 속성들 - 조건부 할당으로 타입 안전성 확보
-    if (user.phone !== undefined) {
-      entity.phone = user.phone;
+    if (user.phoneNumber !== undefined) {
+      entity.phoneNumber = user.phoneNumber;
+    }
+
+    if (user.postalCode !== undefined) {
+      entity.postalCode = user.postalCode;
     }
 
     if (user.address !== undefined) {
       entity.address = user.address;
     }
 
-    if (user.emailVerifiedAt !== undefined) {
-      entity.emailVerifiedAt = user.emailVerifiedAt;
+    if (user.detailAddress !== undefined) {
+      entity.detailAddress = user.detailAddress;
     }
 
     // deactivatedAt은 null 가능하므로 별도 처리
@@ -154,11 +155,11 @@ export class UserEntity {
     user.email = this.email;
     user.password = this.password; // 이미 해시된 비밀번호 그대로 유지
     user.role = this.role;
-    user.phone = this.phone;
-    user.address = this.address;
-    user.isEmailVerified = this.isEmailVerified;
-    user.emailVerifiedAt = this.emailVerifiedAt;
+    user.phoneNumber = this.phoneNumber;
     user.isActive = this.isActive;
+    user.postalCode = this.postalCode;
+    user.address = this.address;
+    user.detailAddress = this.detailAddress;
     user.deactivatedAt = this.deactivatedAt;
     user.lastLoginAt = this.lastLoginAt;
     user.refreshToken = this.refreshToken;

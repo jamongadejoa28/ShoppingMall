@@ -7,7 +7,17 @@ export const ROUTES = {
   CART: '/cart',
   CHECKOUT: '/checkout',
   ORDERS: '/orders',
-  ORDER_DETAIL: '/orders/:id',
+  ORDER_DETAIL: '/orders/:orderId',
+  ORDER_PAYMENT: '/orders/:orderId/payment',
+  ORDER_COMPLETE: '/orders/:orderId/complete',
   PROFILE: '/profile',
-  ADMIN: '/admin',
+} as const;
+
+export const ADMIN_ROUTES = {
+  DASHBOARD: '/admin/dashboard',
+  USERS: '/admin/users',
+  PRODUCTS: '/admin/products',
+  ORDERS: '/admin/orders',
+  INQUIRIES: '/admin/inquiries',
+  SETTINGS: '/admin/settings',
 } as const;

@@ -10,8 +10,8 @@ import React, { useState, useCallback, useEffect } from 'react';
 
 export interface FilterValues {
   search: string;
+  category: string[];
   brand: string[];
-  productType: string[];
   minPrice: number | null;
   maxPrice: number | null;
   sortBy: string;
@@ -25,26 +25,16 @@ export interface SearchFiltersProps {
   isLoading?: boolean;
 }
 
-// 실제 DB 데이터 기반 브랜드 목록
-const AVAILABLE_BRANDS = [
-  'Apple',
-  'LG',
-  'Samsung',
-  '인사이트',
-  '마로니에북스',
-  'UNIQLO',
-  'ZARA',
-];
+// 동적으로 로딩되는 브랜드와 카테고리 목록
+const INITIAL_BRANDS: string[] = [];
+const INITIAL_CATEGORIES: string[] = [];
 
-// 실제 상품 tags 첫 번째 단어 기반 상품 타입
-const PRODUCT_TYPES = ['노트북', '스마트폰', '도서', '의류'];
-
-// 정렬 옵션 (백엔드 API에 맞춰 수정)
+// 정렬 옵션 (백엔드 API 형태에 맞춰 수정)
 const SORT_OPTIONS = [
-  { value: 'createdAt', label: '최신순', order: 'desc' },
-  { value: 'price', label: '가격 낮은순', order: 'asc' },
-  { value: 'price', label: '가격 높은순', order: 'desc' },
-  { value: 'name', label: '이름순', order: 'asc' },
+  { value: 'created_desc', label: '최신순' },
+  { value: 'price_asc', label: '가격 낮은순' },
+  { value: 'price_desc', label: '가격 높은순' },
+  { value: 'name_asc', label: '이름순' },
 ];
 
 // ========================================
@@ -58,6 +48,11 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   isLoading = false,
 }) => {
   const [showFilters, setShowFilters] = useState(false);
+  const [availableBrands, setAvailableBrands] =
+    useState<string[]>(INITIAL_BRANDS);
+  const [availableCategories, setAvailableCategories] =
+    useState<string[]>(INITIAL_CATEGORIES);
+  const [isLoadingFilters, setIsLoadingFilters] = useState(false);
 
   // 로컬 상태로 입력값 관리 (실제 필터링과 분리)
   const [localInputs, setLocalInputs] = useState({
@@ -74,6 +69,49 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
       maxPrice: filters.maxPrice?.toString() || '',
     });
   }, [filters.search, filters.minPrice, filters.maxPrice]);
+
+  // 브랜드와 카테고리 동적 로딩
+  useEffect(() => {
+    const loadFilterOptions = async () => {
+      if (isLoadingFilters) return;
+
+      setIsLoadingFilters(true);
+      try {
+        const response = await fetch(
+          'http://localhost:3001/api/v1/products?page=1&limit=100'
+        );
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.data.products) {
+            // 브랜드 추출
+            const brands = Array.from(
+              new Set(
+                data.data.products.map((p: any) => p.brand).filter(Boolean)
+              )
+            ) as string[];
+            setAvailableBrands(brands.sort());
+
+            // 카테고리 추출
+            const categories = Array.from(
+              new Set(
+                data.data.products
+                  .map((p: any) => p.category?.name)
+                  .filter(Boolean)
+              )
+            ) as string[];
+            setAvailableCategories(categories.sort());
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load filter options:', error);
+      } finally {
+        setIsLoadingFilters(false);
+      }
+    };
+
+    loadFilterOptions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // isLoadingFilters 의존성 제거 (무한 루프 방지)
 
   // ========================================
   // Event Handlers
@@ -141,6 +179,21 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
     [executeSearch, applyPriceFilter]
   );
 
+  // 카테고리 토글 (체크박스만 클릭 가능)
+  const handleCategoryToggle = useCallback(
+    (category: string) => {
+      const newCategories = filters.category.includes(category)
+        ? filters.category.filter(c => c !== category)
+        : [...filters.category, category];
+
+      onFiltersChange({
+        ...filters,
+        category: newCategories,
+      });
+    },
+    [filters, onFiltersChange]
+  );
+
   // 브랜드 토글 (체크박스만 클릭 가능)
   const handleBrandToggle = useCallback(
     (brand: string) => {
@@ -156,21 +209,6 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
     [filters, onFiltersChange]
   );
 
-  // 상품 타입 토글 (체크박스만 클릭 가능)
-  const handleProductTypeToggle = useCallback(
-    (type: string) => {
-      const newTypes = filters.productType.includes(type)
-        ? filters.productType.filter(t => t !== type)
-        : [...filters.productType, type];
-
-      onFiltersChange({
-        ...filters,
-        productType: newTypes,
-      });
-    },
-    [filters, onFiltersChange]
-  );
-
   // 정렬 변경 (즉시 적용)
   const handleSortChange = useCallback(
     (optionIndex: number) => {
@@ -178,28 +216,43 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
       onFiltersChange({
         ...filters,
         sortBy: option.value,
-        sortOrder: option.order as 'asc' | 'desc',
+        sortOrder: 'desc', // 백엔드에서 사용하지 않는 값이므로 기본값으로 설정
       });
     },
     [filters, onFiltersChange]
   );
 
-  // 가격 범위 빠른 선택
+  // 가격 범위 빠른 선택 (토글 기능 포함)
   const handleQuickPriceSelect = useCallback(
     (range: { min?: number; max?: number }) => {
-      onFiltersChange({
-        ...filters,
-        minPrice: range.min || null,
-        maxPrice: range.max || null,
-      });
+      // 현재 선택된 범위와 동일한지 확인
+      const isSameRange =
+        filters.minPrice === (range.min || null) &&
+        filters.maxPrice === (range.max || null);
+
+      if (isSameRange) {
+        // 같은 범위를 다시 클릭하면 초기화
+        onFiltersChange({
+          ...filters,
+          minPrice: null,
+          maxPrice: null,
+        });
+      } else {
+        // 다른 범위를 클릭하면 해당 범위로 설정
+        onFiltersChange({
+          ...filters,
+          minPrice: range.min || null,
+          maxPrice: range.max || null,
+        });
+      }
     },
     [filters, onFiltersChange]
   );
 
   // 활성 필터 개수 계산 (검색어 제외)
   const activeFiltersCount = [
+    filters.category.length > 0,
     filters.brand.length > 0,
-    filters.productType.length > 0,
     filters.minPrice !== null,
     filters.maxPrice !== null,
   ].filter(Boolean).length;
@@ -258,10 +311,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
         <div className="flex gap-3 items-center">
           {/* 정렬 선택 */}
           <select
-            value={SORT_OPTIONS.findIndex(
-              opt =>
-                opt.value === filters.sortBy && opt.order === filters.sortOrder
-            )}
+            value={SORT_OPTIONS.findIndex(opt => opt.value === filters.sortBy)}
             onChange={e => handleSortChange(parseInt(e.target.value))}
             disabled={isLoading}
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
@@ -324,28 +374,55 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
       {/* 고급 필터 패널 */}
       {showFilters && (
         <div className="mt-6 pt-6 border-t border-gray-200">
+          {/* 활성 필터 표시 */}
+          {(filters.category.length > 0 || filters.brand.length > 0) && (
+            <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+              <h4 className="text-sm font-medium text-blue-900 mb-2">
+                활성 필터:
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                {filters.category.map(category => (
+                  <span
+                    key={category}
+                    className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                  >
+                    카테고리: {category}
+                  </span>
+                ))}
+                {filters.brand.map(brand => (
+                  <span
+                    key={brand}
+                    className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800"
+                  >
+                    브랜드: {brand}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* 상품 타입 필터 */}
+            {/* 카테고리 필터 */}
             <div>
               <h3 className="text-sm font-medium text-gray-900 mb-3">
-                상품 타입
+                카테고리
               </h3>
-              <div className="space-y-2">
-                {PRODUCT_TYPES.map(type => (
-                  <div key={type} className="flex items-center">
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {availableCategories.map(category => (
+                  <div key={category} className="flex items-center">
                     <input
-                      id={`type-${type}`}
+                      id={`category-${category}`}
                       type="checkbox"
-                      checked={filters.productType.includes(type)}
-                      onChange={() => handleProductTypeToggle(type)}
+                      checked={filters.category.includes(category)}
+                      onChange={() => handleCategoryToggle(category)}
                       disabled={isLoading}
                       className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
                     />
                     <label
-                      htmlFor={`type-${type}`}
+                      htmlFor={`category-${category}`}
                       className="ml-2 text-sm text-gray-700 cursor-pointer"
                     >
-                      {type}
+                      {category}
                     </label>
                   </div>
                 ))}
@@ -356,7 +433,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
             <div>
               <h3 className="text-sm font-medium text-gray-900 mb-3">브랜드</h3>
               <div className="space-y-2 max-h-48 overflow-y-auto">
-                {AVAILABLE_BRANDS.map(brand => (
+                {availableBrands.map(brand => (
                   <div key={brand} className="flex items-center">
                     <input
                       id={`brand-${brand}`}
@@ -437,17 +514,28 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                     { label: '10-50만원', min: 100000, max: 500000 },
                     { label: '50-100만원', min: 500000, max: 1000000 },
                     { label: '100만원 이상', min: 1000000 },
-                  ].map((range, index) => (
-                    <button
-                      key={index}
-                      type="button"
-                      onClick={() => handleQuickPriceSelect(range)}
-                      disabled={isLoading}
-                      className="px-3 py-1 text-xs border border-gray-300 rounded-full hover:bg-gray-50 transition-colors disabled:opacity-50"
-                    >
-                      {range.label}
-                    </button>
-                  ))}
+                  ].map((range, index) => {
+                    // 현재 선택된 범위인지 확인
+                    const isSelected =
+                      filters.minPrice === (range.min || null) &&
+                      filters.maxPrice === (range.max || null);
+
+                    return (
+                      <button
+                        key={index}
+                        type="button"
+                        onClick={() => handleQuickPriceSelect(range)}
+                        disabled={isLoading}
+                        className={`px-3 py-1 text-xs border rounded-full transition-colors disabled:opacity-50 ${
+                          isSelected
+                            ? 'bg-blue-100 border-blue-300 text-blue-700 hover:bg-blue-200'
+                            : 'border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {range.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>

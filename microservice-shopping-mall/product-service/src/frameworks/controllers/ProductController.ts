@@ -12,9 +12,39 @@ import {
   GetProductListUseCase,
   GetProductListRequest,
 } from "../../usecases/GetProductListUseCase"; // [수정] GetProductListRequest도 가져옵니다.
+import { UpdateProductUseCase, UpdateProductRequest } from "../../usecases/UpdateProductUseCase";
+import { DeleteProductUseCase, DeleteProductRequest } from "../../usecases/DeleteProductUseCase";
+import { GetProductStatsUseCase, GetProductStatsRequest } from "../../usecases/GetProductStatsUseCase";
 import { CreateProductRequest } from "../../usecases/types";
 import { DomainError } from "../../shared/errors/DomainError";
 import { validationResult } from "express-validator";
+
+// 새로운 Review/QnA UseCase imports
+import { 
+  GetProductReviewsUseCase,
+  GetProductReviewsRequest 
+} from "../../usecases/GetProductReviewsUseCase";
+import { 
+  CreateProductReviewUseCase,
+  CreateProductReviewRequest 
+} from "../../usecases/CreateProductReviewUseCase";
+import { 
+  GetProductQnAUseCase,
+  GetProductQnARequest 
+} from "../../usecases/GetProductQnAUseCase";
+import { 
+  CreateProductQnAUseCase,
+  CreateProductQnARequest 
+} from "../../usecases/CreateProductQnAUseCase";
+import { 
+  AnswerProductQnAUseCase,
+  AnswerProductQnARequest 
+} from "../../usecases/AnswerProductQnAUseCase";
+import { 
+  UpdateInventoryUseCase,
+  UpdateInventoryRequest,
+  UpdateInventoryResponse 
+} from "../../usecases/UpdateInventoryUseCase";
 
 // 컨트롤러에서 사용할 표준 API 응답 타입을 정의합니다.
 interface ApiResponse<T> {
@@ -288,7 +318,35 @@ export class ProductController {
     private readonly getProductDetailUseCase: GetProductDetailUseCase,
 
     @inject(TYPES.GetProductListUseCase)
-    private readonly getProductListUseCase: GetProductListUseCase
+    private readonly getProductListUseCase: GetProductListUseCase,
+
+    @inject(TYPES.UpdateProductUseCase)
+    private readonly updateProductUseCase: UpdateProductUseCase,
+
+    @inject(TYPES.DeleteProductUseCase)
+    private readonly deleteProductUseCase: DeleteProductUseCase,
+
+    @inject(TYPES.GetProductStatsUseCase)
+    private readonly getProductStatsUseCase: GetProductStatsUseCase,
+
+    // 새로운 Review/QnA UseCase 의존성
+    @inject(TYPES.GetProductReviewsUseCase)
+    private readonly getProductReviewsUseCase: GetProductReviewsUseCase,
+
+    @inject(TYPES.CreateProductReviewUseCase)
+    private readonly createProductReviewUseCase: CreateProductReviewUseCase,
+
+    @inject(TYPES.GetProductQnAUseCase)
+    private readonly getProductQnAUseCase: GetProductQnAUseCase,
+
+    @inject(TYPES.CreateProductQnAUseCase)
+    private readonly createProductQnAUseCase: CreateProductQnAUseCase,
+
+    @inject(TYPES.AnswerProductQnAUseCase)
+    private readonly answerProductQnAUseCase: AnswerProductQnAUseCase,
+
+    @inject(TYPES.UpdateInventoryUseCase)
+    private readonly updateInventoryUseCase: UpdateInventoryUseCase
   ) {}
 
   /**
@@ -819,6 +877,7 @@ export class ProductController {
         page,
         limit,
         categoryId,
+        category,
         brand,
         minPrice,
         maxPrice,
@@ -834,19 +893,48 @@ export class ProductController {
       };
 
       if (categoryId) getRequest.categoryId = categoryId as string;
-      if (brand) getRequest.brand = brand as string;
+      // 프론트엔드에서 category 파라미터로 카테고리 이름을 전송하는 경우
+      if (category && !categoryId) {
+        console.log('카테고리 이름으로 검색:', category);
+        // 다중 카테고리 처리: 쉼표로 구분된 문자열을 배열로 변환
+        if (typeof category === 'string' && category.includes(',')) {
+          const categoryNames = category.split(',').map(c => c.trim()).filter(c => c);
+          getRequest.categoryNames = categoryNames;
+        } else {
+          getRequest.categoryName = category as string;
+        }
+      }
+      if (brand) {
+        // 다중 브랜드 필터링 지원 - 콤마로 구분된 문자열 또는 배열 처리
+        if (Array.isArray(brand)) {
+          getRequest.brand = brand as string[];
+        } else {
+          // 콤마로 구분된 문자열을 배열로 변환
+          const brandString = brand as string;
+          getRequest.brand = brandString.includes(',') 
+            ? brandString.split(',').map(b => b.trim()).filter(Boolean)
+            : [brandString];
+        }
+        console.log(`[ProductController] 브랜드 필터 처리: ${JSON.stringify(getRequest.brand)}`);
+      }
       if (minPrice) getRequest.minPrice = parseFloat(minPrice as string);
       if (maxPrice) getRequest.maxPrice = parseFloat(maxPrice as string);
       if (search) getRequest.search = search as string;
 
-      // [수정] sortBy와 sortOrder를 조합하여 UseCase가 기대하는 단일 sortBy 필드를 생성합니다.
+      // [수정] 프론트엔드에서 이미 결합된 형태(예: 'price_asc', 'created_desc')로 전송되므로 직접 사용
       if (sortBy && typeof sortBy === "string") {
-        const order =
-          sortOrder === "asc" || sortOrder === "desc" ? sortOrder : "desc";
-        if (sortBy === "price" || sortBy === "name") {
-          getRequest.sortBy = `${sortBy}_${order}` as any;
-        } else if (sortBy === "createdAt") {
-          getRequest.sortBy = "created_desc"; // createdAt은 desc만 지원한다고 가정
+        // 유효한 정렬 옵션인지 확인
+        const validSortOptions = [
+          "price_asc", "price_desc", 
+          "name_asc", "name_desc", 
+          "created_asc", "created_desc"
+        ];
+        
+        if (validSortOptions.includes(sortBy)) {
+          getRequest.sortBy = sortBy as any;
+        } else {
+          // 기본값으로 최신순 설정
+          getRequest.sortBy = "created_desc" as any;
         }
       }
 
@@ -856,6 +944,498 @@ export class ProductController {
         const response: ApiResponse<typeof result.data> = {
           success: true,
           message: "상품 목록을 성공적으로 조회했습니다",
+          data: result.data!,
+          timestamp: new Date().toISOString(),
+          requestId: (req.headers["x-request-id"] as string) || "unknown",
+        };
+        res.status(200).json(response);
+      } else {
+        this.handleError(
+          res,
+          result.error!,
+          req.headers["x-request-id"] as string
+        );
+      }
+    } catch (error) {
+      this.handleUnexpectedError(
+        res,
+        error,
+        req.headers["x-request-id"] as string
+      );
+    }
+  }
+
+  // ========================================
+  // Product Review API Methods
+  // ========================================
+
+  /**
+   * @swagger
+   * /api/v1/products/{id}/reviews:
+   *   get:
+   *     tags: [Product Reviews]
+   *     summary: 상품 리뷰 목록 조회
+   *     description: 특정 상품의 리뷰 목록을 조회합니다.
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         description: 상품 ID
+   *       - in: query
+   *         name: page
+   *         schema:
+   *           type: integer
+   *           minimum: 1
+   *           default: 1
+   *         description: 페이지 번호
+   *       - in: query
+   *         name: limit
+   *         schema:
+   *           type: integer
+   *           minimum: 1
+   *           maximum: 50
+   *           default: 10
+   *         description: 페이지당 리뷰 수
+   *       - in: query
+   *         name: sortBy
+   *         schema:
+   *           type: string
+   *           enum: [newest, oldest, rating_high, rating_low, helpful]
+   *           default: newest
+   *         description: 정렬 기준
+   *     responses:
+   *       200:
+   *         description: 리뷰 목록 조회 성공
+   */
+  async getProductReviews(req: Request, res: Response): Promise<void> {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        const response: ApiResponse<null> = {
+          success: false,
+          message: "입력 데이터가 올바르지 않습니다",
+          errors: errors.array().map((err) => ({
+            field: err.type === "field" ? err.path : "unknown",
+            message: err.msg,
+          })),
+          data: null,
+          timestamp: new Date().toISOString(),
+          requestId: (req.headers["x-request-id"] as string) || "unknown",
+        };
+        res.status(400).json(response);
+        return;
+      }
+
+      const request: GetProductReviewsRequest = {
+        productId: req.params.id!,
+        page: req.query.page ? parseInt(req.query.page as string) : 1,
+        limit: req.query.limit ? parseInt(req.query.limit as string) : 10,
+        sortBy: req.query.sortBy as string || "newest",
+      };
+
+      const result = await this.getProductReviewsUseCase.execute(request);
+
+      if (result.success) {
+        const response: ApiResponse<typeof result.data> = {
+          success: true,
+          message: "상품 리뷰 목록을 성공적으로 조회했습니다",
+          data: result.data!,
+          timestamp: new Date().toISOString(),
+          requestId: (req.headers["x-request-id"] as string) || "unknown",
+        };
+        res.status(200).json(response);
+      } else {
+        this.handleError(
+          res,
+          result.error!,
+          req.headers["x-request-id"] as string
+        );
+      }
+    } catch (error) {
+      this.handleUnexpectedError(
+        res,
+        error,
+        req.headers["x-request-id"] as string
+      );
+    }
+  }
+
+  /**
+   * @swagger
+   * /api/v1/products/{id}/reviews:
+   *   post:
+   *     tags: [Product Reviews]
+   *     summary: 상품 리뷰 작성
+   *     description: 특정 상품에 대한 리뷰를 작성합니다.
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         description: 상품 ID
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - userName
+   *               - rating
+   *               - content
+   *             properties:
+   *               userName:
+   *                 type: string
+   *                 description: 사용자명
+   *               rating:
+   *                 type: integer
+   *                 minimum: 1
+   *                 maximum: 5
+   *                 description: 평점 (1-5)
+   *               content:
+   *                 type: string
+   *                 description: 리뷰 내용
+   *               isVerifiedPurchase:
+   *                 type: boolean
+   *                 description: 구매 인증 여부
+   *     responses:
+   *       201:
+   *         description: 리뷰 작성 성공
+   */
+  async createProductReview(req: Request, res: Response): Promise<void> {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        const response: ApiResponse<null> = {
+          success: false,
+          message: "입력 데이터가 올바르지 않습니다",
+          errors: errors.array().map((err) => ({
+            field: err.type === "field" ? err.path : "unknown",
+            message: err.msg,
+          })),
+          data: null,
+          timestamp: new Date().toISOString(),
+          requestId: (req.headers["x-request-id"] as string) || "unknown",
+        };
+        res.status(400).json(response);
+        return;
+      }
+
+      const request: CreateProductReviewRequest = {
+        productId: req.params.id!,
+        userName: req.body.userName,
+        rating: req.body.rating,
+        content: req.body.content,
+        isVerifiedPurchase: req.body.isVerifiedPurchase || false,
+      };
+
+      const result = await this.createProductReviewUseCase.execute(request);
+
+      if (result.success) {
+        const response: ApiResponse<typeof result.data> = {
+          success: true,
+          message: "상품 리뷰가 성공적으로 작성되었습니다",
+          data: result.data!,
+          timestamp: new Date().toISOString(),
+          requestId: (req.headers["x-request-id"] as string) || "unknown",
+        };
+        res.status(201).json(response);
+      } else {
+        this.handleError(
+          res,
+          result.error!,
+          req.headers["x-request-id"] as string
+        );
+      }
+    } catch (error) {
+      this.handleUnexpectedError(
+        res,
+        error,
+        req.headers["x-request-id"] as string
+      );
+    }
+  }
+
+  // ========================================
+  // Product Q&A API Methods
+  // ========================================
+
+  /**
+   * @swagger
+   * /api/v1/products/{id}/qna:
+   *   get:
+   *     tags: [Product Q&A]
+   *     summary: 상품 Q&A 목록 조회
+   *     description: 특정 상품의 Q&A 목록을 조회합니다.
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         description: 상품 ID
+   *       - in: query
+   *         name: page
+   *         schema:
+   *           type: integer
+   *           minimum: 1
+   *           default: 1
+   *         description: 페이지 번호
+   *       - in: query
+   *         name: limit
+   *         schema:
+   *           type: integer
+   *           minimum: 1
+   *           maximum: 50
+   *           default: 10
+   *         description: 페이지당 Q&A 수
+   *       - in: query
+   *         name: sortBy
+   *         schema:
+   *           type: string
+   *           enum: [newest, oldest, answered, unanswered]
+   *           default: newest
+   *         description: 정렬 기준
+   *     responses:
+   *       200:
+   *         description: Q&A 목록 조회 성공
+   */
+  async getProductQnA(req: Request, res: Response): Promise<void> {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        const response: ApiResponse<null> = {
+          success: false,
+          message: "입력 데이터가 올바르지 않습니다",
+          errors: errors.array().map((err) => ({
+            field: err.type === "field" ? err.path : "unknown",
+            message: err.msg,
+          })),
+          data: null,
+          timestamp: new Date().toISOString(),
+          requestId: (req.headers["x-request-id"] as string) || "unknown",
+        };
+        res.status(400).json(response);
+        return;
+      }
+
+      const request: GetProductQnARequest = {
+        productId: req.params.id!,
+        page: req.query.page ? parseInt(req.query.page as string) : 1,
+        limit: req.query.limit ? parseInt(req.query.limit as string) : 10,
+        includePrivate: false, // 일반 사용자는 공개 질문만 조회
+        sortBy: req.query.sortBy as string || "newest",
+        ...(req.query.onlyAnswered === 'true' ? { onlyAnswered: true } : {}),
+      };
+
+      const result = await this.getProductQnAUseCase.execute(request);
+
+      if (result.success) {
+        const response: ApiResponse<typeof result.data> = {
+          success: true,
+          message: "상품 Q&A 목록을 성공적으로 조회했습니다",
+          data: result.data!,
+          timestamp: new Date().toISOString(),
+          requestId: (req.headers["x-request-id"] as string) || "unknown",
+        };
+        res.status(200).json(response);
+      } else {
+        this.handleError(
+          res,
+          result.error!,
+          req.headers["x-request-id"] as string
+        );
+      }
+    } catch (error) {
+      this.handleUnexpectedError(
+        res,
+        error,
+        req.headers["x-request-id"] as string
+      );
+    }
+  }
+
+  /**
+   * @swagger
+   * /api/v1/products/{id}/qna:
+   *   post:
+   *     tags: [Product Q&A]
+   *     summary: 상품 Q&A 작성
+   *     description: 특정 상품에 대한 질문을 작성합니다.
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         description: 상품 ID
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - userName
+   *               - question
+   *             properties:
+   *               userName:
+   *                 type: string
+   *                 description: 사용자명
+   *               question:
+   *                 type: string
+   *                 description: 질문 내용
+   *               isPublic:
+   *                 type: boolean
+   *                 default: true
+   *                 description: 공개 질문 여부
+   *     responses:
+   *       201:
+   *         description: 질문 작성 성공
+   */
+  async createProductQnA(req: Request, res: Response): Promise<void> {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        const response: ApiResponse<null> = {
+          success: false,
+          message: "입력 데이터가 올바르지 않습니다",
+          errors: errors.array().map((err) => ({
+            field: err.type === "field" ? err.path : "unknown",
+            message: err.msg,
+          })),
+          data: null,
+          timestamp: new Date().toISOString(),
+          requestId: (req.headers["x-request-id"] as string) || "unknown",
+        };
+        res.status(400).json(response);
+        return;
+      }
+
+      // 인증된 사용자 정보 확인
+      if (!req.user) {
+        const response: ApiResponse<null> = {
+          success: false,
+          message: "인증이 필요합니다",
+          error: { code: "AUTHENTICATION_REQUIRED" },
+          data: null,
+          timestamp: new Date().toISOString(),
+          requestId: (req.headers["x-request-id"] as string) || "unknown",
+        };
+        res.status(401).json(response);
+        return;
+      }
+
+      const request: CreateProductQnARequest = {
+        productId: req.params.id!,
+        question: req.body.question,
+        isPublic: req.body.isPublic !== undefined ? req.body.isPublic : true,
+        // 인증된 사용자 정보 사용
+        userId: req.user.id,
+        userEmail: req.user.email,
+        userName: req.body.userName, // 옵셔널 - 클라이언트에서 제공하면 사용, 아니면 이메일 사용
+      };
+
+      const result = await this.createProductQnAUseCase.execute(request);
+
+      if (result.success) {
+        const response: ApiResponse<typeof result.data> = {
+          success: true,
+          message: "상품 Q&A가 성공적으로 작성되었습니다",
+          data: result.data!,
+          timestamp: new Date().toISOString(),
+          requestId: (req.headers["x-request-id"] as string) || "unknown",
+        };
+        res.status(201).json(response);
+      } else {
+        this.handleError(
+          res,
+          result.error!,
+          req.headers["x-request-id"] as string
+        );
+      }
+    } catch (error) {
+      this.handleUnexpectedError(
+        res,
+        error,
+        req.headers["x-request-id"] as string
+      );
+    }
+  }
+
+  /**
+   * @swagger
+   * /api/v1/products/qna/{qnaId}/answer:
+   *   post:
+   *     tags: [Product Q&A]
+   *     summary: Q&A 답변 작성 (관리자용)
+   *     description: 상품 Q&A에 답변을 작성합니다.
+   *     parameters:
+   *       - in: path
+   *         name: qnaId
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         description: Q&A ID
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - answer
+   *               - answeredBy
+   *             properties:
+   *               answer:
+   *                 type: string
+   *                 description: 답변 내용
+   *               answeredBy:
+   *                 type: string
+   *                 description: 답변자
+   *     responses:
+   *       200:
+   *         description: 답변 작성 성공
+   */
+  async answerProductQnA(req: Request, res: Response): Promise<void> {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        const response: ApiResponse<null> = {
+          success: false,
+          message: "입력 데이터가 올바르지 않습니다",
+          errors: errors.array().map((err) => ({
+            field: err.type === "field" ? err.path : "unknown",
+            message: err.msg,
+          })),
+          data: null,
+          timestamp: new Date().toISOString(),
+          requestId: (req.headers["x-request-id"] as string) || "unknown",
+        };
+        res.status(400).json(response);
+        return;
+      }
+
+      const request: AnswerProductQnARequest = {
+        qnaId: req.params.qnaId!,
+        answer: req.body.answer,
+        answeredBy: req.body.answeredBy,
+      };
+
+      const result = await this.answerProductQnAUseCase.execute(request);
+
+      if (result.success) {
+        const response: ApiResponse<typeof result.data> = {
+          success: true,
+          message: "Q&A 답변이 성공적으로 작성되었습니다",
           data: result.data!,
           timestamp: new Date().toISOString(),
           requestId: (req.headers["x-request-id"] as string) || "unknown",
@@ -953,5 +1533,337 @@ export class ProductController {
     };
 
     res.status(500).json(response);
+  }
+
+  /**
+   * POST /api/v1/products/:productId/inventory/update - 재고 업데이트
+   * 
+   * @description 상품의 재고를 업데이트합니다 (감소/증가/보충)
+   * @param productId - 상품 UUID
+   * @body UpdateInventoryRequest
+   * @returns UpdateInventoryResponse
+   * @status 200 - 업데이트 성공
+   * @status 400 - 잘못된 입력 데이터
+   * @status 401 - 인증 필요 (서비스 간 통신용)
+   * @status 404 - 상품을 찾을 수 없음
+   */
+  async updateInventory(req: Request, res: Response): Promise<void> {
+    const requestId = (req as any).requestId || "unknown";
+
+    try {
+      const productId = req.params.productId;
+      const { quantity, operation, reason, orderNumber } = req.body;
+
+      console.log(`[ProductController] 재고 업데이트 요청 - 상품: ${productId}, 작업: ${operation}, 수량: ${quantity}`);
+
+      // 입력 유효성 검증
+      if (!productId) {
+        const response: ApiResponse<null> = {
+          success: false,
+          message: "상품 ID가 필요합니다",
+          error: {
+            code: "INVALID_PRODUCT_ID"
+          },
+          data: null,
+          timestamp: new Date().toISOString(),
+          requestId,
+        };
+        res.status(400).json(response);
+        return;
+      }
+
+      const request: UpdateInventoryRequest = {
+        productId,
+        quantity: Number(quantity),
+        operation,
+        reason,
+        orderNumber,
+      };
+
+      const result = await this.updateInventoryUseCase.execute(request);
+
+      if (result.success) {
+        const response: ApiResponse<UpdateInventoryResponse['data']> = {
+          success: true,
+          message: result.message || "재고가 성공적으로 업데이트되었습니다",
+          data: result.data || null,
+          timestamp: new Date().toISOString(),
+          requestId,
+        };
+
+        res.status(200).json(response);
+      } else {
+        const statusCode = result.error?.includes('찾을 수 없습니다') ? 404 : 400;
+        
+        const response: ApiResponse<null> = {
+          success: false,
+          message: result.error || "재고 업데이트에 실패했습니다",
+          error: {
+            code: statusCode === 404 ? "PRODUCT_NOT_FOUND" : "INVENTORY_UPDATE_FAILED"
+          },
+          data: null,
+          timestamp: new Date().toISOString(),
+          requestId,
+        };
+
+        res.status(statusCode).json(response);
+      }
+
+    } catch (error) {
+      console.error("[ProductController] 재고 업데이트 API 오류:", {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+        requestId,
+        timestamp: new Date().toISOString(),
+      });
+
+      this.handleUnexpectedError(res, error, requestId);
+    }
+  }
+
+  /**
+   * 상품 수정 (관리자 전용)
+   */
+  public async updateProduct(req: Request, res: Response): Promise<void> {
+    const requestId = (req.headers["x-request-id"] as string) || "unknown";
+
+    try {
+      console.log("[ProductController] 상품 수정 요청:", {
+        productId: req.params.id,
+        requestId,
+        timestamp: new Date().toISOString(),
+      });
+
+      // 입력 검증
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        const response: ApiResponse<null> = {
+          success: false,
+          message: "입력 데이터가 올바르지 않습니다",
+          errors: errors.array(),
+          data: null,
+          timestamp: new Date().toISOString(),
+          requestId,
+        };
+        res.status(400).json(response);
+        return;
+      }
+
+      // 요청 데이터 구성
+      const updateRequest: UpdateProductRequest = {
+        productId: req.params.id as string,
+        name: req.body.name,
+        description: req.body.description,
+        price: req.body.price,
+        discountPercent: req.body.discountPercent,
+        sku: req.body.sku,
+        brand: req.body.brand,
+        categoryId: req.body.categoryId,
+        tags: req.body.tags,
+        isActive: req.body.isActive,
+        stockQuantity: req.body.stockQuantity,
+        lowStockThreshold: req.body.lowStockThreshold,
+        dimensions: req.body.dimensions,
+        images: req.body.images,
+      };
+
+      // UseCase 실행
+      const result = await this.updateProductUseCase.execute(updateRequest);
+
+      const response: ApiResponse<any> = {
+        success: true,
+        message: "상품을 성공적으로 수정했습니다",
+        data: result.product,
+        timestamp: new Date().toISOString(),
+        requestId,
+      };
+
+      res.status(200).json(response);
+    } catch (error) {
+      console.error("[ProductController] 상품 수정 오류:", {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+        requestId,
+        timestamp: new Date().toISOString(),
+      });
+
+      if (error instanceof Error) {
+        if (error.message.includes('찾을 수 없습니다')) {
+          const response: ApiResponse<null> = {
+            success: false,
+            message: error.message,
+            error: { code: 'PRODUCT_NOT_FOUND' },
+            data: null,
+            timestamp: new Date().toISOString(),
+            requestId,
+          };
+          res.status(404).json(response);
+          return;
+        }
+
+        if (error.message.includes('중복') || error.message.includes('이미 존재')) {
+          const response: ApiResponse<null> = {
+            success: false,
+            message: error.message,
+            error: { code: 'DUPLICATE_DATA' },
+            data: null,
+            timestamp: new Date().toISOString(),
+            requestId,
+          };
+          res.status(409).json(response);
+          return;
+        }
+
+        // 일반적인 비즈니스 에러
+        const response: ApiResponse<null> = {
+          success: false,
+          message: error.message,
+          error: { code: 'BUSINESS_ERROR' },
+          data: null,
+          timestamp: new Date().toISOString(),
+          requestId,
+        };
+        res.status(400).json(response);
+        return;
+      }
+
+      this.handleUnexpectedError(res, error, requestId);
+    }
+  }
+
+  /**
+   * 상품 삭제 (관리자 전용)
+   */
+  public async deleteProduct(req: Request, res: Response): Promise<void> {
+    const requestId = (req.headers["x-request-id"] as string) || "unknown";
+
+    try {
+      console.log("[ProductController] 상품 삭제 요청:", {
+        productId: req.params.id,
+        requestId,
+        timestamp: new Date().toISOString(),
+      });
+
+      // 입력 검증
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        const response: ApiResponse<null> = {
+          success: false,
+          message: "입력 데이터가 올바르지 않습니다",
+          errors: errors.array(),
+          data: null,
+          timestamp: new Date().toISOString(),
+          requestId,
+        };
+        res.status(400).json(response);
+        return;
+      }
+
+      // 요청 데이터 구성
+      const deleteRequest: DeleteProductRequest = {
+        productId: req.params.id as string,
+      };
+
+      // UseCase 실행
+      const result = await this.deleteProductUseCase.execute(deleteRequest);
+
+      const response: ApiResponse<null> = {
+        success: true,
+        message: "상품을 성공적으로 삭제했습니다",
+        data: null,
+        timestamp: new Date().toISOString(),
+        requestId,
+      };
+
+      res.status(200).json(response);
+    } catch (error) {
+      console.error("[ProductController] 상품 삭제 오류:", {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+        requestId,
+        timestamp: new Date().toISOString(),
+      });
+
+      if (error instanceof Error) {
+        if (error.message.includes('찾을 수 없습니다')) {
+          const response: ApiResponse<null> = {
+            success: false,
+            message: error.message,
+            error: { code: 'PRODUCT_NOT_FOUND' },
+            data: null,
+            timestamp: new Date().toISOString(),
+            requestId,
+          };
+          res.status(404).json(response);
+          return;
+        }
+
+        if (error.message.includes('삭제할 수 없습니다') || error.message.includes('진행 중인')) {
+          const response: ApiResponse<null> = {
+            success: false,
+            message: error.message,
+            error: { code: 'DELETE_CONFLICT' },
+            data: null,
+            timestamp: new Date().toISOString(),
+            requestId,
+          };
+          res.status(409).json(response);
+          return;
+        }
+
+        // 일반적인 비즈니스 에러
+        const response: ApiResponse<null> = {
+          success: false,
+          message: error.message,
+          error: { code: 'BUSINESS_ERROR' },
+          data: null,
+          timestamp: new Date().toISOString(),
+          requestId,
+        };
+        res.status(400).json(response);
+        return;
+      }
+
+      this.handleUnexpectedError(res, error, requestId);
+    }
+  }
+
+  /**
+   * 상품 통계 조회 (관리자 전용)
+   */
+  public async getProductStats(req: Request, res: Response): Promise<void> {
+    const requestId = (req.headers["x-request-id"] as string) || "unknown";
+
+    try {
+      console.log("[ProductController] 상품 통계 조회 요청:", {
+        requestId,
+        timestamp: new Date().toISOString(),
+      });
+
+      // 요청 데이터 구성
+      const statsRequest: GetProductStatsRequest = {};
+
+      // UseCase 실행
+      const result = await this.getProductStatsUseCase.execute(statsRequest);
+
+      const response: ApiResponse<any> = {
+        success: true,
+        message: "상품 통계 조회가 완료되었습니다",
+        data: result,
+        timestamp: new Date().toISOString(),
+        requestId,
+      };
+
+      res.status(200).json(response);
+    } catch (error) {
+      console.error("[ProductController] 상품 통계 조회 오류:", {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+        requestId,
+        timestamp: new Date().toISOString(),
+      });
+
+      this.handleUnexpectedError(res, error, requestId);
+    }
   }
 }

@@ -215,7 +215,8 @@ describe("Use Case Integration Tests", () => {
       });
 
       expect(updateResult.success).toBe(true);
-      expect(updateResult.cart.getTotalAmount()).toBe(75000); // (10000 * 5) + 25000
+      expect(updateResult.cart).not.toBeNull();
+      expect(updateResult.cart!.getTotalAmount()).toBe(75000); // (10000 * 5) + 25000
 
       // 5. 장바구니 조회 (현재 상태 확인)
       console.log("5️⃣ 장바구니 현재 상태 조회");
@@ -232,8 +233,9 @@ describe("Use Case Integration Tests", () => {
       });
 
       expect(removeResult.success).toBe(true);
-      expect(removeResult.cart.getItems()).toHaveLength(1);
-      expect(removeResult.cart.getTotalAmount()).toBe(50000); // 10000 * 5
+      expect(removeResult.cart).not.toBeNull();
+      expect(removeResult.cart!.getItems()).toHaveLength(1);
+      expect(removeResult.cart!.getTotalAmount()).toBe(50000); // 10000 * 5
 
       // 7. 장바구니 전체 삭제
       console.log("7️⃣ 장바구니 전체 삭제");

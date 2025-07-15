@@ -21,6 +21,7 @@ import {
   notFoundHandler,
 } from "./frameworks/middlewares/common";
 import { createProductRoutes } from "./frameworks/routes/productRoutes";
+import { createCategoryRoutes } from "./frameworks/routes/categoryRoutes";
 import {
   setupSwagger,
   validateSwaggerSpec,
@@ -28,6 +29,8 @@ import {
 } from "./infrastructure/swagger/swaggerMiddleware";
 import swaggerUi from "swagger-ui-express";
 import swaggerJSDoc from "swagger-jsdoc";
+import { logger } from "./infrastructure/logging/Logger";
+import { healthChecker } from "./infrastructure/health/HealthChecker";
 // 환경 변수 로드
 config();
 
@@ -36,7 +39,9 @@ config();
  */
 class ProductServiceApp {
   private app: express.Application;
+  private server: any;
   private readonly PORT: number;
+  private isShuttingDown = false;
 
   constructor() {
     this.app = express();
@@ -48,30 +53,30 @@ class ProductServiceApp {
    */
   async initialize(): Promise<void> {
     try {
-      console.log("🚀 [ProductService] 애플리케이션 초기화 시작...");
+      logger.info("애플리케이션 초기화 시작");
 
       // 1. DI Container 초기화
-      console.log("📦 [ProductService] DI Container 초기화 중...");
+      logger.info("DI Container 초기화 중");
       await DIContainer.create();
-      console.log("✅ [ProductService] DI Container 초기화 완료");
+      logger.info("DI Container 초기화 완료");
 
       // 2. 미들웨어 설정
       this.setupMiddlewares();
-      console.log("✅ [ProductService] 미들웨어 설정 완료");
+      logger.info("미들웨어 설정 완료");
 
       this.setupSwagger();
 
       // 3. 라우트 설정
       this.setupRoutes();
-      console.log("✅ [ProductService] 라우트 설정 완료");
+      logger.info("라우트 설정 완료");
 
       // 4. 에러 핸들링 설정
       this.setupErrorHandling();
-      console.log("✅ [ProductService] 에러 핸들링 설정 완료");
+      logger.info("에러 핸들링 설정 완료");
 
-      console.log("🎉 [ProductService] 애플리케이션 초기화 완료!");
+      logger.info("애플리케이션 초기화 완료!");
     } catch (error) {
-      console.error("❌ [ProductService] 애플리케이션 초기화 실패:", error);
+      logger.error("애플리케이션 초기화 실패", { error: error as Error });
       throw error;
     }
   }
@@ -111,11 +116,11 @@ class ProductServiceApp {
 
     // 요청 제한 설정
     const limiter = rateLimit({
-      windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || "900000"), // 15분
-      max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || "1000"), // 1000 요청
+      windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || "60000"), // 1분
+      max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || "100"), // 100 요청
       message: {
         error: "Too many requests from this IP",
-        retryAfter: "15 minutes",
+        retryAfter: "1 minute",
       },
       standardHeaders: true,
       legacyHeaders: false,
@@ -135,17 +140,7 @@ class ProductServiceApp {
       })
     );
 
-    // 요청 로깅 미들웨어
-    this.app.use((req, res, next) => {
-      const start = Date.now();
-      res.on("finish", () => {
-        const duration = Date.now() - start;
-        console.log(
-          `${req.method} ${req.path} - ${res.statusCode} - ${duration}ms`
-        );
-      });
-      next();
-    });
+    // 요청 로깅 미들웨어는 common.ts의 loggingMiddleware에서 처리
   }
 
   // 🚀 2. Swagger 설정 (클래스 내부에 추가)
@@ -199,9 +194,9 @@ class ProductServiceApp {
         })
       );
 
-      console.log("✅ [ProductService] Swagger 설정 완료");
+      logger.info("Swagger 설정 완료");
     } catch (error) {
-      console.error("❌ [ProductService] Swagger 설정 실패:", error);
+      logger.error("Swagger 설정 실패", { error: error as Error });
     }
   }
 
@@ -224,6 +219,57 @@ class ProductServiceApp {
      *         description: 서비스 정상 작동
      */
     this.app.get("/health", healthCheckHandler);
+
+    // 고급 헬스체크 엔드포인트
+    this.app.get("/health/ready", async (req, res) => {
+      try {
+        const healthResult = await healthChecker.checkReadiness();
+        const response = {
+          success: healthResult.status === 'healthy',
+          message: `Product Service is ${healthResult.status}`,
+          data: healthResult,
+          timestamp: new Date().toISOString(),
+          requestId: (req as any).requestId || "unknown",
+        };
+        const statusCode = healthResult.status === 'healthy' ? 200 : 503;
+        res.status(statusCode).json(response);
+      } catch (error) {
+        logger.error('Readiness check failed', { error: error as Error });
+        res.status(503).json({
+          success: false,
+          message: "Readiness check failed",
+          error: { code: "READINESS_CHECK_ERROR", details: (error as Error).message },
+          data: null,
+          timestamp: new Date().toISOString(),
+          requestId: (req as any).requestId || "unknown",
+        });
+      }
+    });
+
+    this.app.get("/health/live", async (req, res) => {
+      try {
+        const healthResult = await healthChecker.checkLiveness();
+        const response = {
+          success: healthResult.status === 'healthy',
+          message: `Product Service is ${healthResult.status}`,
+          data: healthResult,
+          timestamp: new Date().toISOString(),
+          requestId: (req as any).requestId || "unknown",
+        };
+        const statusCode = healthResult.status === 'healthy' ? 200 : 503;
+        res.status(statusCode).json(response);
+      } catch (error) {
+        logger.error('Liveness check failed', { error: error as Error });
+        res.status(503).json({
+          success: false,
+          message: "Liveness check failed",
+          error: { code: "LIVENESS_CHECK_ERROR", details: (error as Error).message },
+          data: null,
+          timestamp: new Date().toISOString(),
+          requestId: (req as any).requestId || "unknown",
+        });
+      }
+    });
 
     // API 정보
     this.app.get("/api", (req, res) => {
@@ -288,15 +334,26 @@ class ProductServiceApp {
 
     // API v1 Routes - 새로운 REST API 추가!
     this.app.use("/api/v1/products", createProductRoutes());
+    this.app.use("/api/v1/categories", createCategoryRoutes());
 
-    console.log("✅ [ProductService] API 라우트 설정 완료");
-    console.log("📋 [ProductService] 사용 가능한 엔드포인트:");
-    console.log("   GET  /              - Health Check");
-    console.log("   GET  /health        - Health Check");
-    console.log("   GET  /api           - API 정보");
-    console.log("   POST /api/v1/products       - 상품 생성");
-    console.log("   GET  /api/v1/products       - 상품 목록 조회");
-    console.log("   GET  /api/v1/products/:id   - 상품 상세 조회");
+    logger.info("API 라우트 설정 완료");
+    logger.info("사용 가능한 엔드포인트", {
+      metadata: {
+        endpoints: [
+          "GET  /              - Health Check",
+          "GET  /health        - Health Check",
+          "GET  /api           - API 정보",
+          "POST /api/v1/products       - 상품 생성",
+          "GET  /api/v1/products       - 상품 목록 조회",
+          "GET  /api/v1/products/:id   - 상품 상세 조회",
+          "GET  /api/v1/categories     - 카테고리 목록 조회",
+          "POST /api/v1/categories     - 카테고리 생성 (관리자)",
+          "GET  /api/v1/categories/:id - 카테고리 상세 조회",
+          "PUT  /api/v1/categories/:id - 카테고리 수정 (관리자)",
+          "DELETE /api/v1/categories/:id - 카테고리 삭제 (관리자)"
+        ]
+      }
+    });
   }
 
   /**
@@ -309,7 +366,7 @@ class ProductServiceApp {
     // Global Error Handler
     this.app.use(errorHandlingMiddleware);
 
-    console.log("✅ [ProductService] 에러 핸들링 설정 완료");
+    logger.info("에러 핸들링 설정 완료");
   }
 
   /**
@@ -319,68 +376,115 @@ class ProductServiceApp {
     try {
       await this.initialize();
 
-      this.app.listen(this.PORT, () => {
-        console.log(
-          `🚀 [ProductService] 서버가 포트 ${this.PORT}에서 실행 중입니다.`
-        );
-        console.log(
-          `📍 [ProductService] Health Check: http://localhost:${this.PORT}/health`
-        );
-        console.log(
-          `📍 [ProductService] API Info: http://localhost:${this.PORT}/`
-        );
-        // 🚀 Swagger 링크 추가
-        console.log(
-          `📚 [ProductService] API Docs: http://localhost:${this.PORT}/api/docs`
-        );
-        console.log(
-          `📄 [ProductService] API Spec: http://localhost:${this.PORT}/api/docs/json`
-        );
+      this.server = this.app.listen(this.PORT, () => {
+        logger.info(`서버가 포트 ${this.PORT}에서 실행 중입니다`, {
+          metadata: {
+            port: this.PORT,
+            healthCheck: `http://localhost:${this.PORT}/health`,
+            apiInfo: `http://localhost:${this.PORT}/`,
+            apiDocs: `http://localhost:${this.PORT}/api/docs`,
+            apiSpec: `http://localhost:${this.PORT}/api/docs/json`,
+            environment: process.env.NODE_ENV || "development"
+          }
+        });
 
         if (process.env.NODE_ENV === "development") {
-          console.log(`🧪 [ProductService] 테스트 엔드포인트:`);
-          console.log(
-            `   - Database: http://localhost:${this.PORT}/test/database`
-          );
-          console.log(`   - Redis: http://localhost:${this.PORT}/test/redis`);
-          console.log(
-            `   - Repository: http://localhost:${this.PORT}/test/repository/categories`
-          );
+          logger.info("테스트 엔드포인트", {
+            metadata: {
+              database: `http://localhost:${this.PORT}/test/database`,
+              redis: `http://localhost:${this.PORT}/test/redis`,
+              repository: `http://localhost:${this.PORT}/test/repository/categories`
+            }
+          });
         }
       });
+
+      // 서버 에러 처리
+      this.server.on('error', (error: any) => {
+        if (error.code === 'EADDRINUSE') {
+          logger.error(`포트 ${this.PORT}가 이미 사용 중입니다`, { error });
+        } else {
+          logger.error('서버 에러 발생', { error });
+        }
+        process.exit(1);
+      });
+
     } catch (error) {
-      console.error("❌ [ProductService] 서버 시작 실패:", error);
+      logger.error("서버 시작 실패", { error: error as Error });
       process.exit(1);
     }
   }
 
   /**
-   * 서버 종료 처리
+   * 서버 종료 처리 - 개선된 Graceful Shutdown
    */
   setupGracefulShutdown(): void {
-    process.on("SIGTERM", async () => {
-      console.log("🔄 [ProductService] SIGTERM 수신, 서버 종료 중...");
-      await this.shutdown();
-    });
+    const shutdownHandler = async (signal: string) => {
+      if (this.isShuttingDown) {
+        logger.warn(`종료 진행 중, ${signal} 무시됨`);
+        return;
+      }
 
-    process.on("SIGINT", async () => {
-      console.log("🔄 [ProductService] SIGINT 수신, 서버 종료 중...");
+      this.isShuttingDown = true;
+      logger.info(`${signal} 수신, 서버 종료 중...`);
+      
+      // 헬스체크에 종료 상태 알림
+      healthChecker.setShuttingDown(true);
+      
       await this.shutdown();
-    });
+    };
+
+    process.on("SIGTERM", () => shutdownHandler("SIGTERM"));
+    process.on("SIGINT", () => shutdownHandler("SIGINT"));
+    
+    // 강제 종료 방지 (개발 환경에서만)
+    if (process.env.NODE_ENV !== 'production') {
+      process.on("SIGQUIT", () => shutdownHandler("SIGQUIT"));
+    }
   }
 
   /**
-   * 서버 종료
+   * 서버 종료 - 개선된 Graceful Shutdown
    */
   private async shutdown(): Promise<void> {
-    try {
-      console.log("🔄 [ProductService] 데이터베이스 연결 종료 중...");
-      await DatabaseConfig.disconnect();
+    const shutdownTimeout = parseInt(process.env.SHUTDOWN_TIMEOUT || "30000"); // 30초
+    const shutdownTimer = setTimeout(() => {
+      logger.error("강제 종료 (타임아웃)");
+      process.exit(1);
+    }, shutdownTimeout);
 
-      console.log("✅ [ProductService] 서버가 정상적으로 종료되었습니다.");
+    try {
+      logger.info("HTTP 서버 종료 중...");
+      
+      // 1. HTTP 서버 종료 (새로운 연결 차단)
+      if (this.server) {
+        await new Promise<void>((resolve, reject) => {
+          this.server.close((err: any) => {
+            if (err) {
+              reject(err);
+            } else {
+              logger.info("HTTP 서버 종료 완료");
+              resolve();
+            }
+          });
+        });
+      }
+
+      logger.info("리소스 정리 중...");
+      
+      // 2. DI Container 정리 (DB, Redis 연결 포함)
+      await DIContainer.cleanup();
+
+      logger.info("서버가 정상적으로 종료되었습니다");
+      
+      // 3. 로거 정리
+      logger.close();
+      
+      clearTimeout(shutdownTimer);
       process.exit(0);
     } catch (error) {
-      console.error("❌ [ProductService] 서버 종료 중 오류:", error);
+      logger.error("서버 종료 중 오류", { error: error as Error });
+      clearTimeout(shutdownTimer);
       process.exit(1);
     }
   }
@@ -402,22 +506,20 @@ async function bootstrap() {
 
 // 미처리 예외 처리
 process.on("uncaughtException", (error) => {
-  console.error("❌ [ProductService] Uncaught Exception:", error);
+  logger.error("Uncaught Exception 발생", { error });
   process.exit(1);
 });
 
 process.on("unhandledRejection", (reason, promise) => {
-  console.error(
-    "❌ [ProductService] Unhandled Rejection at:",
-    promise,
-    "reason:",
-    reason
-  );
+  logger.error("Unhandled Rejection 발생", { 
+    error: reason as Error, 
+    metadata: { promise: promise.toString() }
+  });
   process.exit(1);
 });
 
 // 애플리케이션 실행
 bootstrap().catch((error) => {
-  console.error("❌ [ProductService] Bootstrap 실패:", error);
+  logger.error("Bootstrap 실패", { error });
   process.exit(1);
 });

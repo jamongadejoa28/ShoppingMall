@@ -93,7 +93,7 @@ export interface GetProductDetailResponse {
     tags: string[];
     isActive: boolean;
     hasDiscount: boolean;
-    discountPrice?: number;
+    originalPrice?: number; // Show original price for discount comparison
     createdAt: Date;
     updatedAt: Date;
   };
@@ -115,7 +115,7 @@ export interface GetProductsRequest {
   page?: number;
   limit?: number;
   categoryId?: string;
-  brand?: string;
+  brand?: string | string[];
   minPrice?: number;
   maxPrice?: number;
   search?: string;
@@ -184,7 +184,7 @@ export interface UpdateProductResponse {
     effectivePrice: number;
     brand: string;
     hasDiscount: boolean;
-    discountPrice?: number;
+    originalPrice?: number; // Show original price for discount comparison
     updatedAt: Date;
   };
 }
@@ -232,6 +232,8 @@ export interface ProductRepository {
   save(product: Product): Promise<Product>;
   findById(id: string): Promise<Product | null>;
   findBySku(sku: string): Promise<Product | null>;
+  findAll(): Promise<Product[]>;
+  countByCategory(categoryId: string): Promise<number>;
   findByCategory(
     categoryId: string,
     options?: {
@@ -244,9 +246,12 @@ export interface ProductRepository {
   search(options: {
     search?: string;
     categoryId?: string;
-    brand?: string;
+    categoryName?: string;
+    categoryNames?: string[];
+    brand?: string | string[];
     minPrice?: number;
     maxPrice?: number;
+    tags?: string[];
     page?: number;
     limit?: number;
     sortBy?: string;
@@ -259,14 +264,17 @@ export interface ProductRepository {
 
 export interface CategoryRepository {
   save(category: Category): Promise<Category>;
+  create(category: Category): Promise<Category>;
   findById(id: string): Promise<Category | null>;
   findBySlug(slug: string): Promise<Category | null>;
-  findChildren(parentId: string): Promise<Category[]>;
-  findPath(categoryId: string): Promise<Category[]>;
+  findByName(name: string): Promise<Category | null>;
   findAll(options?: {
-    parentId?: string;
     isActive?: boolean;
-    depth?: number;
+  }): Promise<Category[]>;
+  findMany(options?: {
+    isActive?: boolean;
+    sortBy?: 'sort_order' | 'name' | 'createdAt';
+    sortOrder?: 'asc' | 'desc';
   }): Promise<Category[]>;
   update(category: Category): Promise<Category>;
   delete(id: string): Promise<void>;

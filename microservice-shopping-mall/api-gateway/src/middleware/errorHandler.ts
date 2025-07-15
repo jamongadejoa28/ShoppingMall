@@ -2,9 +2,9 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { ValidationError } from 'express-validator';
-import { createLogger } from '@shopping-mall/shared';
-
-// Logger 인스턴스 생성
+// Simple logger implementation
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const createLogger = (name: string) => console;
 const logger = createLogger('api-gateway');
 
 // ========================================

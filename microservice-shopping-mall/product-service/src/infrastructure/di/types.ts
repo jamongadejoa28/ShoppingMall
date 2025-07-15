@@ -14,20 +14,41 @@ export const TYPES = {
   ProductRepository: Symbol.for("ProductRepository"),
   CategoryRepository: Symbol.for("CategoryRepository"),
   InventoryRepository: Symbol.for("InventoryRepository"),
+  ProductReviewRepository: Symbol.for("ProductReviewRepository"),
+  ProductQnARepository: Symbol.for("ProductQnARepository"),
 
   // Services
   CacheService: Symbol.for("CacheService"),
   EventPublisher: Symbol.for("EventPublisher"),
 
-  // Use Cases
+  // Use Cases - Product
   CreateProductUseCase: Symbol.for("CreateProductUseCase"),
   GetProductDetailUseCase: Symbol.for("GetProductDetailUseCase"),
   GetProductListUseCase: Symbol.for("GetProductListUseCase"),
+  UpdateProductUseCase: Symbol.for("UpdateProductUseCase"),
+  DeleteProductUseCase: Symbol.for("DeleteProductUseCase"),
+  GetProductStatsUseCase: Symbol.for("GetProductStatsUseCase"),
+  GetProductReviewsUseCase: Symbol.for("GetProductReviewsUseCase"),
+  CreateProductReviewUseCase: Symbol.for("CreateProductReviewUseCase"),
+  GetProductQnAUseCase: Symbol.for("GetProductQnAUseCase"),
+  CreateProductQnAUseCase: Symbol.for("CreateProductQnAUseCase"),
+  AnswerProductQnAUseCase: Symbol.for("AnswerProductQnAUseCase"),
+  UpdateInventoryUseCase: Symbol.for("UpdateInventoryUseCase"),
+
+  // Use Cases - Category
+  GetCategoryListUseCase: Symbol.for("GetCategoryListUseCase"),
+  GetCategoryDetailUseCase: Symbol.for("GetCategoryDetailUseCase"),
+  CreateCategoryUseCase: Symbol.for("CreateCategoryUseCase"),
+  UpdateCategoryUseCase: Symbol.for("UpdateCategoryUseCase"),
+  DeleteCategoryUseCase: Symbol.for("DeleteCategoryUseCase"),
 
   // Infrastructure
   DataSource: Symbol.for("DataSource"),
   RedisConfig: Symbol.for("RedisConfig"),
   CacheKeyBuilder: Symbol.for("CacheKeyBuilder"),
   CacheStrategyManager: Symbol.for("CacheStrategyManager"),
+  
+  // Controllers
   ProductController: Symbol.for("ProductController"),
+  CategoryController: Symbol.for("CategoryController"),
 };

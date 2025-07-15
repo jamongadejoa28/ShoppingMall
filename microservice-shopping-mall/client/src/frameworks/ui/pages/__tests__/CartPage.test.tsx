@@ -1,7 +1,7 @@
 import { CartProduct } from '@/types/cart-type/CartProduct';
 import { OrderApiAdapter } from '@adapters/api/OrderApiAdapter';
 import { useAuthStore } from '@frameworks/state/authStore';
-import { useCartStore } from '@frameworks/state/cartStore';
+import { useCartLocalStore } from '@frameworks/state/cartStoreLocal'; // CartState 정의가 이 파일에 있을 가능성이 높습니다.
 import { ROUTES } from '@shared/constants/routes';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -9,7 +9,6 @@ import CartPage from '../CartPage';
 
 jest.mock('@adapters/api/OrderApiAdapter');
 
-// ✅ Product 타입과 일치하는 mockProduct 정의
 const mockProduct: CartProduct = {
   id: 'prod-1',
   name: 'Test Product',
@@ -17,8 +16,6 @@ const mockProduct: CartProduct = {
   price: 100,
   brand: 'Test Brand',
   sku: 'SKU123',
-  slug: 'test-product',
-  imageUrls: ['http://example.com/image.png'],
   category: {
     id: 'cat-1',
     name: 'Test Category',
@@ -27,11 +24,22 @@ const mockProduct: CartProduct = {
   inventory: {
     availableQuantity: 10,
     status: 'in_stock',
+    location: 'MAIN_WAREHOUSE',
   },
+  rating: 4.5,
+  review_count: 128,
+  is_featured: true,
+  min_order_quantity: 1,
+  max_order_quantity: 10,
+  tags: ['test'],
+  image_urls: [],
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
 };
 
 const setup = (isLoggedIn: boolean) => {
-  useCartStore.setState(
+  // CartState의 모든 필수 속성을 포함하도록 수정
+  useCartLocalStore.setState(
     {
       items: [
         {
@@ -51,27 +59,34 @@ const setup = (isLoggedIn: boolean) => {
       getItem: () => undefined,
       hasItem: () => true,
       getItemQuantity: () => 1,
+      error: null,
+
+      // --- 여기에 누락된 속성들을 추가합니다 ---
+      loading: false, // `loading` 속성 추가
+      loadCart: jest.fn(), // `loadCart` 함수 추가
+      removeSelectedItems: jest.fn(), // `removeSelectedItems` 함수 추가
+      syncProductInfo: jest.fn(), // `syncProductInfo` 함수 추가
+      // --- CartState에 정의된 다른 속성들이 있다면 모두 추가해야 합니다 ---
     },
-    true
+    true // 전체 상태를 교체하는 것이므로 true 유지
   );
 
   useAuthStore.setState(
     {
       isAuthenticated: isLoggedIn,
-      token: isLoggedIn ? 'fake-token' : null,
       user: isLoggedIn
         ? {
             id: 'user-123',
             name: 'Test User',
             email: 'test@test.com',
             role: 'USER',
+            isEmailVerified: true,
+            isActive: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
           }
         : null,
-      login: jest.fn(),
-      logout: jest.fn(),
-      updateUser: jest.fn(),
-    },
-    true // 전체 교체
+    } as any // 타입 충돌 해결을 위한 임시 캐스팅 (이 부분도 가능하면 정확한 타입으로 개선하는 것이 좋습니다)
   );
 
   render(

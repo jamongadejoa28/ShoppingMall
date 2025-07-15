@@ -1,7 +1,8 @@
 import "reflect-metadata"; // Inversify를 위한 메타데이터 지원
 import { DatabaseConfig } from "../config/DatabaseConfig";
 import { RedisConfig } from "../config/RedisConfig";
-import { DIContainer } from "../di/exeContainer";
+import { DIContainer } from "../di/Container";
+import { TYPES } from "../di/types";
 
 /**
  * 애플리케이션 부트스트랩 클래스
@@ -29,9 +30,7 @@ export class AppBootstrap {
       );
 
       // 4. Redis 연결 확인
-      const redisConfig = AppBootstrap.container.get(
-        Symbol.for("RedisConfig")
-      ) as RedisConfig;
+      const redisConfig = AppBootstrap.container.get(TYPES.RedisConfig) as RedisConfig;
       const cacheService = redisConfig.getCacheService();
       const isRedisConnected = await cacheService.healthCheck();
       console.log(
@@ -96,17 +95,7 @@ export class AppBootstrap {
 }
 
 // ========================================
-// 프로세스 종료 시그널 처리
+// 프로세스 종료 시그널 처리는 server.ts에서 통합 관리
 // ========================================
 
-process.on("SIGINT", async () => {
-  console.log("\n[Process] SIGINT 수신, 애플리케이션 종료 중...");
-  await AppBootstrap.shutdown();
-  process.exit(0);
-});
-
-process.on("SIGTERM", async () => {
-  console.log("\n[Process] SIGTERM 수신, 애플리케이션 종료 중...");
-  await AppBootstrap.shutdown();
-  process.exit(0);
-});
+// 중복 시그널 핸들러 제거 - server.ts에서 통합 관리

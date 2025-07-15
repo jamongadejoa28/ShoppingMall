@@ -17,6 +17,10 @@ export interface RegisterUserRequest {
   email: string;
   password: string;
   role?: 'customer' | 'admin';
+  phoneNumber?: string;
+  postalCode?: string;
+  address?: string;
+  detailAddress?: string;
 }
 
 export interface RegisterUserResponse {
@@ -25,7 +29,10 @@ export interface RegisterUserResponse {
     name: string;
     email: string;
     role: 'customer' | 'admin';
-    isEmailVerified: boolean;
+    phoneNumber?: string;
+    postalCode?: string;
+    address?: string;
+    detailAddress?: string;
     isActive: boolean;
     createdAt: Date;
   };
@@ -45,7 +52,6 @@ export interface LoginUserResponse {
     name: string;
     email: string;
     role: 'customer' | 'admin';
-    isEmailVerified: boolean;
     lastLoginAt: Date;
   };
   accessToken: string;
@@ -64,9 +70,10 @@ export interface GetUserProfileResponse {
     name: string;
     email: string;
     role: 'customer' | 'admin';
-    phone?: string;
+    phoneNumber?: string;
+    postalCode?: string;
     address?: string;
-    isEmailVerified: boolean;
+    detailAddress?: string;
     isActive: boolean;
     lastLoginAt?: Date;
     createdAt: Date;
@@ -78,8 +85,10 @@ export interface GetUserProfileResponse {
 export interface UpdateUserProfileRequest {
   userId: string;
   name?: string;
-  phone?: string;
+  phoneNumber?: string;
+  postalCode?: string;
   address?: string;
+  detailAddress?: string;
 }
 
 export interface UpdateUserProfileResponse {
@@ -88,9 +97,10 @@ export interface UpdateUserProfileResponse {
     name: string;
     email: string;
     role: 'customer' | 'admin';
-    phone?: string;
+    phoneNumber?: string;
+    postalCode?: string;
     address?: string;
-    isEmailVerified: boolean;
+    detailAddress?: string;
     isActive: boolean;
     updatedAt: Date;
   };
@@ -111,6 +121,62 @@ export interface DeactivateUserResponse {
   };
 }
 
+// ===== Admin 관련 타입 =====
+export interface GetUsersRequest {
+  page?: number;
+  limit?: number;
+  search?: string;
+  role?: 'all' | 'customer' | 'admin';
+  isActive?: boolean;
+  sortBy?: 'name' | 'email' | 'createdAt' | 'lastLoginAt';
+  sortOrder?: 'asc' | 'desc';
+}
+
+export interface GetUsersResponse {
+  users: {
+    id: string;
+    name: string;
+    email: string;
+    role: 'customer' | 'admin';
+    phoneNumber?: string;
+    postalCode?: string;
+    address?: string;
+    detailAddress?: string;
+    isActive: boolean;
+    lastLoginAt?: Date;
+    deactivatedAt?: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }[];
+  pagination: {
+    currentPage: number;
+    totalPages: number;
+    totalCount: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
+}
+
+export interface GetUserStatsRequest {
+  // 통계 조회에 특별한 파라미터가 필요한 경우 추가
+}
+
+export interface GetUserStatsResponse {
+  totalUsers: number;
+  activeUsers: number;
+  newUsersToday: number;
+  newUsersThisWeek: number;
+  newUsersThisMonth: number;
+  adminUsers: number;
+  customerUsers: number;
+  deactivatedUsers: number;
+  lastActivityCounts: {
+    today: number;
+    thisWeek: number;
+    thisMonth: number;
+  };
+}
+
 // ===== Repository 인터페이스 (Dependency Inversion) =====
 export interface UserRepository {
   save(user: User): Promise<User>;
@@ -118,6 +184,31 @@ export interface UserRepository {
   findById(id: string): Promise<User | null>;
   update(user: User): Promise<User>;
   delete(id: string): Promise<void>;
+  // Admin 전용 메서드 추가
+  findMany(options: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    role?: 'all' | 'customer' | 'admin';
+    isActive?: boolean;
+    sortBy?: 'name' | 'email' | 'createdAt' | 'lastLoginAt';
+    sortOrder?: 'asc' | 'desc';
+  }): Promise<{ users: User[]; total: number }>;
+  getStatistics(): Promise<{
+    totalUsers: number;
+    activeUsers: number;
+    newUsersToday: number;
+    newUsersThisWeek: number;
+    newUsersThisMonth: number;
+    adminUsers: number;
+    customerUsers: number;
+    deactivatedUsers: number;
+    lastActivityCounts: {
+      today: number;
+      thisWeek: number;
+      thisMonth: number;
+    };
+  }>;
 }
 
 // ===== 외부 서비스 인터페이스 =====

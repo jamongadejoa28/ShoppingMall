@@ -5,7 +5,7 @@
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { UserController } from '../controllers/UserController';
-import { requireAuth, requireSelfOrAdmin } from '../middleware/authMiddleware';
+import { requireAuth, requireSelfOrAdmin, requireAdmin } from '../middleware/authMiddleware';
 import {
   validateUserRegistration,
   validateUserLogin,
@@ -19,7 +19,8 @@ import { asyncErrorCatcher } from '../middleware/errorMiddleware';
  */
 export function createUserRoutes(
   userController: UserController,
-  tokenService: any
+  tokenService: any,
+  userRepository: any
 ): Router {
   const router = Router();
 
@@ -112,62 +113,7 @@ export function createUserRoutes(
    */
   router.post(
     '/refresh',
-    asyncErrorCatcher(async (req: Request, res: Response) => {
-      try {
-        const { refreshToken } = req.body;
-
-        if (!refreshToken) {
-          res.status(400).json({
-            success: false,
-            message: 'Refresh Token이 필요합니다',
-            error: 'REFRESH_TOKEN_REQUIRED',
-            data: null,
-          });
-          return;
-        }
-
-        // Refresh Token 검증
-        const refreshPayload = tokenService.verifyRefreshToken(refreshToken);
-
-        if (!refreshPayload) {
-          res.status(401).json({
-            success: false,
-            message: '유효하지 않거나 만료된 Refresh Token입니다',
-            error: 'INVALID_REFRESH_TOKEN',
-            data: null,
-          });
-          return;
-        }
-
-        // 사용자 정보로 새 토큰 쌍 생성
-        const newTokens = {
-          accessToken: tokenService.generateAccessToken({
-            id: refreshPayload.id,
-            email: refreshPayload.email,
-            role: 'customer', // 실제로는 DB에서 조회해야 함
-          }),
-          refreshToken: tokenService.generateRefreshToken({
-            id: refreshPayload.id,
-            email: refreshPayload.email,
-          }),
-          expiresIn: tokenService.getTokenExpirationTime(),
-        };
-
-        res.status(200).json({
-          success: true,
-          message: '토큰이 성공적으로 갱신되었습니다',
-          data: newTokens,
-        });
-      } catch (error) {
-        console.error('[Refresh Token] 오류:', error);
-        res.status(500).json({
-          success: false,
-          message: '토큰 갱신 중 오류가 발생했습니다',
-          error: 'TOKEN_REFRESH_ERROR',
-          data: null,
-        });
-      }
-    })
+    asyncErrorCatcher(userController.refreshToken)
   );
 
   // ========================================
@@ -204,6 +150,32 @@ export function createUserRoutes(
     '/profile',
     requireAuth(tokenService),
     asyncErrorCatcher(userController.deactivateAccount)
+  );
+
+  // ========================================
+  // Admin 전용 API (관리자 권한 필요)
+  // ========================================
+
+  /**
+   * 사용자 목록 조회 (관리자 전용)
+   * GET /api/users
+   */
+  router.get(
+    '/',
+    requireAuth(tokenService),
+    requireAdmin(),
+    asyncErrorCatcher(userController.getUsers)
+  );
+
+  /**
+   * 사용자 통계 조회 (관리자 전용)
+   * GET /api/users/stats
+   */
+  router.get(
+    '/stats',
+    requireAuth(tokenService),
+    requireAdmin(),
+    asyncErrorCatcher(userController.getUserStats)
   );
 
   // ========================================
@@ -350,6 +322,10 @@ export function createUserRoutes(
  * - GET    /api/users/profile     - 내 프로필 조회
  * - PUT    /api/users/profile     - 내 프로필 수정
  * - DELETE /api/users/profile     - 내 계정 비활성화
+ *
+ * 관리자 전용 API:
+ * - GET    /api/users             - 사용자 목록 조회 (페이징, 검색, 필터링)
+ * - GET    /api/users/stats       - 사용자 통계 조회 (대시보드용)
  *
  * 본인/관리자 API:
  * - GET    /api/users/:userId     - 특정 사용자 프로필 조회

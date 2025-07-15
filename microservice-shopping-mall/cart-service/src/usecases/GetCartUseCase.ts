@@ -69,6 +69,13 @@ export class GetCartUseCase {
           if (cachedCart) {
             // 🔧 수정: 캐시에서 가져온 일반 객체를 Domain 인스턴스로 변환
             cart = this.deserializeCartFromCache(cachedCart);
+            
+            // 🔧 세션 카트 TTL 연장 (사용자 활동 시 30분 연장)
+            if (cart) {
+              console.log(`🔄 [GetCartUseCase] 세션 장바구니 TTL 연장: ${request.sessionId}`);
+              await this.cacheService.set(cacheKey, cart.getId(), 1800); // 30분 연장
+              await this.cacheService.set(`cart:${cart.getId()}`, cachedCart, 1800); // 장바구니 데이터도 연장
+            }
           }
         }
 

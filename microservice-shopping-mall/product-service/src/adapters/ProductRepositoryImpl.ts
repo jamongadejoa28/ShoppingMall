@@ -124,6 +124,36 @@ export class ProductRepositoryImpl implements ProductRepository {
     }
   }
 
+  /**
+   * 모든 상품 조회 (통계용)
+   */
+  async findAll(): Promise<Product[]> {
+    try {
+      const entities = await this.repository.find();
+      return entities.map(entity => entity.toDomain());
+    } catch (error) {
+      this.handleDatabaseError(error, "findAll");
+      throw error;
+    }
+  }
+
+  /**
+   * 카테고리별 상품 수 카운트
+   */
+  async countByCategory(categoryId: string): Promise<number> {
+    try {
+      return await this.repository.count({
+        where: { 
+          categoryId,
+          isActive: true 
+        }
+      });
+    } catch (error) {
+      this.handleDatabaseError(error, "countByCategory");
+      throw error;
+    }
+  }
+
   // ========================================
   // 검색 및 필터링
   // ========================================
@@ -181,7 +211,9 @@ export class ProductRepositoryImpl implements ProductRepository {
   async search(options: {
     search?: string;
     categoryId?: string;
-    brand?: string;
+    categoryName?: string;
+    categoryNames?: string[];
+    brand?: string | string[];
     minPrice?: number;
     maxPrice?: number;
     tags?: string[];
@@ -191,10 +223,14 @@ export class ProductRepositoryImpl implements ProductRepository {
     sortBy?: string;
     sortOrder?: "asc" | "desc";
   }): Promise<{ products: Product[]; total: number }> {
+    console.log(`[CRITICAL] ProductRepositoryImpl.search() CALLED with sortBy: ${options.sortBy}, sortOrder: ${options.sortOrder}`);
+    console.log(`[DEBUG] Repository search called with options:`, JSON.stringify(options, null, 2));
     try {
       const {
         search,
         categoryId,
+        categoryName,
+        categoryNames,
         brand,
         minPrice,
         maxPrice,
@@ -206,6 +242,8 @@ export class ProductRepositoryImpl implements ProductRepository {
         sortOrder = "desc",
       } = options;
 
+      console.log('[DEBUG] Search options:', { categoryId, categoryName, categoryNames });
+
       const queryBuilder = this.repository.createQueryBuilder("product");
 
       // 기본 활성 상태 필터
@@ -214,40 +252,69 @@ export class ProductRepositoryImpl implements ProductRepository {
       // 텍스트 검색 (상품명, 설명, 브랜드)
       if (search) {
         queryBuilder.andWhere(
-          "(LOWER(product.name) LIKE LOWER(:search) OR " +
-            "LOWER(product.description) LIKE LOWER(:search) OR " +
-            "LOWER(product.brand) LIKE LOWER(:search))",
+          "(COALESCE(LOWER(product.name), '') LIKE LOWER(:search) OR " +
+            "COALESCE(LOWER(product.description), '') LIKE LOWER(:search) OR " +
+            "COALESCE(LOWER(product.brand), '') LIKE LOWER(:search))",
           { search: `%${search}%` }
         );
       }
 
       // 카테고리 필터
-      if (categoryId) {
-        queryBuilder.andWhere("product.categoryId = :categoryId", {
-          categoryId,
-        });
+      if (categoryId || categoryName || categoryNames) {
+        // 카테고리와 JOIN하여 ID 또는 이름으로 검색
+        queryBuilder.leftJoin("categories", "category", "product.category_id = category.id");
+        
+        if (categoryId) {
+          queryBuilder.andWhere("product.category_id = :categoryId", { categoryId });
+        } else if (categoryName) {
+          queryBuilder.andWhere("LOWER(category.name) = LOWER(:categoryName)", { categoryName });
+        } else if (categoryNames && categoryNames.length > 0) {
+          // 다중 카테고리 검색: OR 조건으로 처리
+          const categoryConditions = categoryNames.map((_, index) => 
+            `LOWER(category.name) = LOWER(:categoryName${index})`
+          ).join(' OR ');
+          
+          const categoryParams: { [key: string]: string } = {};
+          categoryNames.forEach((name, index) => {
+            categoryParams[`categoryName${index}`] = name;
+          });
+          
+          queryBuilder.andWhere(`(${categoryConditions})`, categoryParams);
+        }
       }
 
-      // 브랜드 필터
+      // 브랜드 필터 (단일 브랜드 또는 다중 브랜드 지원)
       if (brand) {
-        queryBuilder.andWhere("LOWER(product.brand) = LOWER(:brand)", {
-          brand,
-        });
+        if (Array.isArray(brand)) {
+          // 다중 브랜드 필터링
+          if (brand.length > 0) {
+            const brandConditions = brand
+              .map((_, index) => `COALESCE(LOWER(product.brand), '') = LOWER(:brand${index})`)
+              .join(" OR ");
+            
+            queryBuilder.andWhere(`(${brandConditions})`);
+            
+            // 파라미터 바인딩
+            brand.forEach((brandName, index) => {
+              queryBuilder.setParameter(`brand${index}`, brandName);
+            });
+            
+          }
+        } else {
+          // 단일 브랜드 필터링
+          queryBuilder.andWhere("COALESCE(LOWER(product.brand), '') = LOWER(:brand)", {
+            brand,
+          });
+        }
       }
 
       // 가격 범위 필터
       if (minPrice !== undefined) {
-        queryBuilder.andWhere(
-          "(CASE WHEN product.discountPrice IS NOT NULL THEN product.discountPrice ELSE product.price END) >= :minPrice",
-          { minPrice }
-        );
+        queryBuilder.andWhere("product.price >= :minPrice", { minPrice });
       }
 
       if (maxPrice !== undefined) {
-        queryBuilder.andWhere(
-          "(CASE WHEN product.discountPrice IS NOT NULL THEN product.discountPrice ELSE product.price END) <= :maxPrice",
-          { maxPrice }
-        );
+        queryBuilder.andWhere("product.price <= :maxPrice", { maxPrice });
       }
 
       // 태그 필터 (PostgreSQL JSON 연산 사용)
@@ -270,6 +337,11 @@ export class ProductRepositoryImpl implements ProductRepository {
       // 페이징
       const offset = (page - 1) * limit;
       queryBuilder.skip(offset).take(limit);
+
+      // 실행 전 SQL 로깅
+      const sqlQuery = queryBuilder.getSql();
+      console.log(`[DEBUG] Generated SQL Query: ${sqlQuery}`);
+      console.log(`[DEBUG] Query Parameters:`, queryBuilder.getParameters());
 
       // 실행
       const [entities, total] = await queryBuilder.getManyAndCount();
@@ -308,22 +380,6 @@ export class ProductRepositoryImpl implements ProductRepository {
   // 집계 및 통계
   // ========================================
 
-  /**
-   * 카테고리별 상품 개수 조회
-   */
-  async countByCategory(categoryId: string): Promise<number> {
-    try {
-      return await this.repository.count({
-        where: {
-          categoryId,
-          isActive: true,
-        },
-      });
-    } catch (error) {
-      this.handleDatabaseError(error, "countByCategory");
-      throw error;
-    }
-  }
 
   /**
    * 브랜드 목록 조회 (활성 상품 기준)
@@ -332,12 +388,13 @@ export class ProductRepositoryImpl implements ProductRepository {
     try {
       const result = await this.repository
         .createQueryBuilder("product")
-        .select("DISTINCT product.brand", "brand")
+        .select("DISTINCT COALESCE(product.brand, '')", "brand")
         .where("product.isActive = :isActive", { isActive: true })
+        .andWhere("product.brand IS NOT NULL")
         .orderBy("product.brand", "ASC")
         .getRawMany();
 
-      return result.map((row) => row.brand);
+      return result.map((row) => row.brand).filter(Boolean);
     } catch (error) {
       this.handleDatabaseError(error, "getActiveBrands");
       throw error;
@@ -356,22 +413,30 @@ export class ProductRepositoryImpl implements ProductRepository {
     sortBy: string,
     sortOrder: "asc" | "desc"
   ): void {
+    console.log(`[DEBUG] applySorting called with sortBy: "${sortBy}", sortOrder: "${sortOrder}"`);
+    
     const validSortFields = [
       "name",
-      "price",
+      "price", 
       "brand",
       "createdAt",
       "updatedAt",
     ];
 
+    console.log(`[DEBUG] Valid sort fields: ${validSortFields.join(', ')}`);
+    console.log(`[DEBUG] Is "${sortBy}" in valid fields? ${validSortFields.includes(sortBy)}`);
+
     if (validSortFields.includes(sortBy)) {
+      console.log(`[DEBUG] Valid sort field detected: ${sortBy}`);
       if (sortBy === "price") {
-        // 할인가가 있으면 할인가로, 없으면 원가로 정렬
+        // 가격으로 정렬 (price 컬럼만 사용)
+        console.log(`[DEBUG] Applying price sort: product.price ${sortOrder.toUpperCase()}`);
         queryBuilder.orderBy(
-          "CASE WHEN product.discountPrice IS NOT NULL THEN product.discountPrice ELSE product.price END",
+          "product.price",
           sortOrder.toUpperCase() as "ASC" | "DESC"
         );
       } else {
+        console.log(`[DEBUG] Applying ${sortBy} sort: product.${sortBy} ${sortOrder.toUpperCase()}`);
         queryBuilder.orderBy(
           `product.${sortBy}`,
           sortOrder.toUpperCase() as "ASC" | "DESC"
@@ -379,6 +444,7 @@ export class ProductRepositoryImpl implements ProductRepository {
       }
     } else {
       // 기본 정렬
+      console.log(`[DEBUG] Invalid sort field "${sortBy}", applying default sort: product.createdAt DESC`);
       queryBuilder.orderBy("product.createdAt", "DESC");
     }
   }
@@ -388,6 +454,10 @@ export class ProductRepositoryImpl implements ProductRepository {
    */
   private handleDatabaseError(error: any, operation: string): void {
     console.error(`[ProductRepository] ${operation} 오류:`, error);
+    console.error(`[ProductRepository] 에러 코드:`, error.code);
+    console.error(`[ProductRepository] 에러 메시지:`, error.message);
+    console.error(`[ProductRepository] 에러 상세:`, error.detail);
+    console.error(`[ProductRepository] 에러 위치:`, error.position);
 
     // PostgreSQL 에러 코드에 따른 도메인 에러 변환
     if (error.code === "23505") {
@@ -409,7 +479,7 @@ export class ProductRepositoryImpl implements ProductRepository {
     }
 
     // 기타 데이터베이스 에러
-    throw new Error(`데이터베이스 오류가 발생했습니다: ${operation}`);
+    throw new Error(`데이터베이스 오류가 발생했습니다: ${operation} - ${error.message || 'Unknown error'}`);
   }
 
   // ========================================

@@ -12,6 +12,7 @@ import {
   validateGetProductDetail,
   validateGetProductList,
 } from "../middlewares/validation";
+import { requireAuth, optionalAuth, requireAdmin } from "../middlewares/authMiddleware";
 import { TYPES } from "../../infrastructure/di/types";
 
 /**
@@ -21,6 +22,11 @@ import { TYPES } from "../../infrastructure/di/types";
  * - POST   /api/v1/products        - 상품 생성
  * - GET    /api/v1/products/:id    - 상품 상세 조회
  * - GET    /api/v1/products        - 상품 목록 조회
+ * - GET    /api/v1/products/:id/reviews - 상품 리뷰 목록 조회
+ * - POST   /api/v1/products/:id/reviews - 상품 리뷰 작성
+ * - GET    /api/v1/products/:id/qna - 상품 Q&A 목록 조회
+ * - POST   /api/v1/products/:id/qna - 상품 Q&A 작성
+ * - PUT    /api/v1/qna/:qnaId/answer - 상품 Q&A 답변
  *
  * 미들웨어 체인:
  * 1. requestIdMiddleware - 요청 ID 생성
@@ -54,6 +60,34 @@ export function createProductRoutes(): Router {
     "/",
     validateCreateProduct,
     productController.createProduct.bind(productController)
+  );
+
+  /**
+   * GET /api/v1/products/stats-test - 상품 통계 조회 (개발용 - 인증 없음)
+   * 
+   * @description 개발/테스트용 상품 통계 조회 (인증 없음)
+   * @returns GetProductStatsResponse
+   * @status 200 - 조회 성공
+   */
+  router.get(
+    "/stats-test",
+    productController.getProductStats.bind(productController)
+  );
+
+  /**
+   * GET /api/v1/products/stats - 상품 통계 조회 (관리자 전용)
+   * 
+   * @description 관리자 대시보드용 상품 통계를 조회합니다
+   * @returns GetProductStatsResponse
+   * @status 200 - 조회 성공
+   * @status 401 - 인증 필요
+   * @status 403 - 권한 없음 (관리자만 가능)
+   */
+  router.get(
+    "/stats",
+    requireAuth(), // 필수 인증
+    requireAdmin(), // 관리자 권한 필요
+    productController.getProductStats.bind(productController)
   );
 
   /**
@@ -96,6 +130,168 @@ export function createProductRoutes(): Router {
     "/",
     validateGetProductList,
     productController.getProductList.bind(productController)
+  );
+
+  /**
+   * GET /api/v1/products/:id/reviews - 상품 리뷰 목록 조회
+   * 
+   * @description 특정 상품의 리뷰 목록을 조회합니다
+   * @param id - 상품 UUID
+   * @query page - 페이지 번호 (기본값: 1)
+   * @query limit - 한 페이지당 항목 수 (기본값: 10)
+   * @query sortBy - 정렬 기준 (newest|oldest|rating_high|rating_low|helpful)
+   * @returns GetProductReviewsResponse
+   * @status 200 - 조회 성공
+   * @status 400 - 잘못된 요청 파라미터
+   * @status 404 - 상품을 찾을 수 없음
+   */
+  router.get(
+    "/:id/reviews",
+    validateGetProductDetail, // 상품 ID 검증 재사용
+    productController.getProductReviews.bind(productController)
+  );
+
+  /**
+   * POST /api/v1/products/:id/reviews - 상품 리뷰 작성
+   * 
+   * @description 특정 상품에 대한 리뷰를 작성합니다
+   * @param id - 상품 UUID
+   * @body CreateProductReviewRequest
+   * @returns CreateProductReviewResponse
+   * @status 201 - 작성 성공
+   * @status 400 - 잘못된 입력 데이터
+   * @status 401 - 인증 필요
+   * @status 404 - 상품을 찾을 수 없음
+   * @status 409 - 중복 리뷰 (이미 작성한 리뷰 존재)
+   */
+  router.post(
+    "/:id/reviews",
+    validateGetProductDetail, // 상품 ID 검증 재사용
+    // TODO: 추후 validateCreateProductReview 미들웨어 추가
+    productController.createProductReview.bind(productController)
+  );
+
+  /**
+   * GET /api/v1/products/:id/qna - 상품 Q&A 목록 조회
+   * 
+   * @description 특정 상품의 Q&A 목록을 조회합니다
+   * @param id - 상품 UUID
+   * @query page - 페이지 번호 (기본값: 1)
+   * @query limit - 한 페이지당 항목 수 (기본값: 10)
+   * @query sortBy - 정렬 기준 (newest|oldest)
+   * @query onlyAnswered - 답변 완료된 것만 조회 (true|false)
+   * @returns GetProductQnAResponse
+   * @status 200 - 조회 성공
+   * @status 400 - 잘못된 요청 파라미터
+   * @status 404 - 상품을 찾을 수 없음
+   */
+  router.get(
+    "/:id/qna",
+    optionalAuth(), // 선택적 인증 (로그인 사용자에게 추가 정보 제공)
+    validateGetProductDetail, // 상품 ID 검증 재사용
+    productController.getProductQnA.bind(productController)
+  );
+
+  /**
+   * POST /api/v1/products/:id/qna - 상품 Q&A 작성
+   * 
+   * @description 특정 상품에 대한 Q&A를 작성합니다
+   * @param id - 상품 UUID
+   * @body CreateProductQnARequest
+   * @returns CreateProductQnAResponse
+   * @status 201 - 작성 성공
+   * @status 400 - 잘못된 입력 데이터
+   * @status 401 - 인증 필요
+   * @status 404 - 상품을 찾을 수 없음
+   */
+  router.post(
+    "/:id/qna",
+    requireAuth(), // 필수 인증 (로그인 사용자만 Q&A 작성 가능)
+    validateGetProductDetail, // 상품 ID 검증 재사용
+    // TODO: 추후 validateCreateProductQnA 미들웨어 추가
+    productController.createProductQnA.bind(productController)
+  );
+
+  /**
+   * PUT /api/v1/qna/:qnaId/answer - 상품 Q&A 답변
+   * 
+   * @description 특정 Q&A에 답변을 작성합니다 (관리자 전용)
+   * @param qnaId - Q&A UUID
+   * @body AnswerProductQnARequest
+   * @returns AnswerProductQnAResponse
+   * @status 200 - 답변 성공
+   * @status 400 - 잘못된 입력 데이터
+   * @status 401 - 인증 필요
+   * @status 403 - 권한 없음 (관리자만 가능)
+   * @status 404 - Q&A를 찾을 수 없음
+   * @status 409 - 이미 답변된 Q&A
+   */
+  router.put(
+    "/qna/:qnaId/answer",
+    requireAuth(), // 필수 인증
+    requireAdmin(), // 관리자 권한 필요
+    // TODO: 추후 validateAnswerProductQnA 미들웨어 추가
+    productController.answerProductQnA.bind(productController)
+  );
+
+  /**
+   * POST /api/v1/products/:productId/inventory/update - 재고 업데이트
+   * 
+   * @description 상품의 재고를 업데이트합니다 (감소/증가/보충)
+   * @param productId - 상품 UUID
+   * @body UpdateInventoryRequest
+   * @returns UpdateInventoryResponse
+   * @status 200 - 업데이트 성공
+   * @status 400 - 잘못된 입력 데이터
+   * @status 401 - 인증 필요 (서비스 간 통신용)
+   * @status 404 - 상품을 찾을 수 없음
+   */
+  router.post(
+    "/:productId/inventory/update",
+    requireAuth(), // 서비스 간 통신을 위한 인증
+    // TODO: 추후 validateUpdateInventory 미들웨어 추가
+    productController.updateInventory.bind(productController)
+  );
+
+  /**
+   * PUT /api/v1/products/:id - 상품 수정 (관리자)
+   * 
+   * @description 기존 상품 정보를 수정합니다
+   * @param id - 상품 UUID
+   * @body UpdateProductRequest
+   * @returns UpdateProductResponse
+   * @status 200 - 수정 성공
+   * @status 400 - 잘못된 입력 데이터
+   * @status 401 - 인증 필요
+   * @status 403 - 권한 없음 (관리자만 가능)
+   * @status 404 - 상품을 찾을 수 없음
+   */
+  router.put(
+    "/:id",
+    requireAuth(), // 필수 인증
+    requireAdmin(), // 관리자 권한 필요
+    validateGetProductDetail, // 상품 ID 검증 재사용
+    // TODO: 추후 validateUpdateProduct 미들웨어 추가
+    productController.updateProduct.bind(productController)
+  );
+
+  /**
+   * DELETE /api/v1/products/:id - 상품 삭제 (관리자)
+   * 
+   * @description 상품을 삭제합니다 (소프트 삭제)
+   * @param id - 상품 UUID
+   * @returns DeleteProductResponse
+   * @status 200 - 삭제 성공
+   * @status 401 - 인증 필요
+   * @status 403 - 권한 없음 (관리자만 가능)
+   * @status 404 - 상품을 찾을 수 없음
+   */
+  router.delete(
+    "/:id",
+    requireAuth(), // 필수 인증
+    requireAdmin(), // 관리자 권한 필요
+    validateGetProductDetail, // 상품 ID 검증 재사용
+    productController.deleteProduct.bind(productController)
   );
 
   return router;

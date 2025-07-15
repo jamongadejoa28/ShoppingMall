@@ -33,6 +33,8 @@ import { RemoveFromCartUseCase } from "../../usecases/RemoveFromCartUseCase";
 import { UpdateCartItemUseCase } from "../../usecases/UpdateCartItemUseCase";
 import { TransferCartUseCase } from "../../usecases/TransferCartUseCase";
 import { ClearCartUseCase } from "../../usecases/ClearCartUseCase";
+import { DeleteCartUseCase } from "../../usecases/DeleteCartUseCase";
+import { CleanupSessionCartUseCase } from "../../usecases/CleanupSessionCartUseCase";
 
 // Controllers
 import { CartController } from "../../frameworks/controllers/CartController";
@@ -298,6 +300,16 @@ export class DIContainer {
       container
         .bind<ClearCartUseCase>(TYPES.ClearCartUseCase)
         .to(ClearCartUseCase)
+        .inTransientScope();
+
+      container
+        .bind<DeleteCartUseCase>(TYPES.DeleteCartUseCase)
+        .to(DeleteCartUseCase)
+        .inTransientScope();
+
+      container
+        .bind<CleanupSessionCartUseCase>(TYPES.CleanupSessionCartUseCase)
+        .to(CleanupSessionCartUseCase)
         .inTransientScope();
 
       console.log("🎯 [CartService-DIContainer] 모든 UseCase 바인딩 완료");

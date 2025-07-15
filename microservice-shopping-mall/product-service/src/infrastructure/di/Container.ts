@@ -15,6 +15,8 @@ import { CategoryRepository } from "../../usecases/types";
 import { InventoryRepository } from "../../usecases/types";
 import { CacheService } from "../../usecases/types";
 import { EventPublisher } from "../../usecases/types";
+import { ProductReviewRepository } from "../../repositories/ProductReviewRepository";
+import { ProductQnARepository } from "../../repositories/ProductQnARepository";
 
 // Implementations
 import { ProductRepositoryImpl } from "../../adapters/ProductRepositoryImpl";
@@ -22,14 +24,33 @@ import { CategoryRepositoryImpl } from "../../adapters/CategoryRepositoryImpl";
 import { InventoryRepositoryImpl } from "../../adapters/InventoryRepositoryImpl";
 import { CacheServiceImpl } from "../../adapters/CacheServiceImpl";
 import { MockEventPublisher } from "../../adapters/MockEventPublisher";
+import { ProductReviewRepositoryImpl } from "../../adapters/ProductReviewRepositoryImpl";
+import { ProductQnARepositoryImpl } from "../../adapters/ProductQnARepositoryImpl";
 
-// Use Cases
+// Use Cases - Product
 import { CreateProductUseCase } from "../../usecases/CreateProductUseCase";
 import { GetProductDetailUseCase } from "../../usecases/GetProductDetailUseCase";
 import { GetProductListUseCase } from "../../usecases/GetProductListUseCase";
+import { UpdateProductUseCase } from "../../usecases/UpdateProductUseCase";
+import { DeleteProductUseCase } from "../../usecases/DeleteProductUseCase";
+import { GetProductStatsUseCase } from "../../usecases/GetProductStatsUseCase";
+import { GetProductReviewsUseCase } from "../../usecases/GetProductReviewsUseCase";
+import { CreateProductReviewUseCase } from "../../usecases/CreateProductReviewUseCase";
+import { GetProductQnAUseCase } from "../../usecases/GetProductQnAUseCase";
+import { CreateProductQnAUseCase } from "../../usecases/CreateProductQnAUseCase";
+import { AnswerProductQnAUseCase } from "../../usecases/AnswerProductQnAUseCase";
+import { UpdateInventoryUseCase } from "../../usecases/UpdateInventoryUseCase";
+
+// Use Cases - Category
+import { GetCategoryListUseCase } from "../../usecases/GetCategoryListUseCase";
+import { GetCategoryDetailUseCase } from "../../usecases/GetCategoryDetailUseCase";
+import { CreateCategoryUseCase } from "../../usecases/CreateCategoryUseCase";
+import { UpdateCategoryUseCase } from "../../usecases/UpdateCategoryUseCase";
+import { DeleteCategoryUseCase } from "../../usecases/DeleteCategoryUseCase";
 
 // Controllers
 import { ProductController } from "../../frameworks/controllers/ProductController";
+import { CategoryController } from "../../frameworks/controllers/CategoryController";
 
 // Config and Strategy
 import { RedisConfig } from "../config/RedisConfig";
@@ -119,6 +140,16 @@ export class DIContainer {
       .bind<InventoryRepository>(TYPES.InventoryRepository)
       .to(InventoryRepositoryImpl)
       .inSingletonScope();
+
+    container
+      .bind<ProductReviewRepository>(TYPES.ProductReviewRepository)
+      .to(ProductReviewRepositoryImpl)
+      .inSingletonScope();
+
+    container
+      .bind<ProductQnARepository>(TYPES.ProductQnARepository)
+      .to(ProductQnARepositoryImpl)
+      .inSingletonScope();
   }
 
   /**
@@ -180,15 +211,91 @@ export class DIContainer {
       .bind<GetProductListUseCase>(TYPES.GetProductListUseCase)
       .to(GetProductListUseCase)
       .inTransientScope();
+
+    container
+      .bind<UpdateProductUseCase>(TYPES.UpdateProductUseCase)
+      .to(UpdateProductUseCase)
+      .inTransientScope();
+
+    container
+      .bind<DeleteProductUseCase>(TYPES.DeleteProductUseCase)
+      .to(DeleteProductUseCase)
+      .inTransientScope();
+
+    container
+      .bind<GetProductStatsUseCase>(TYPES.GetProductStatsUseCase)
+      .to(GetProductStatsUseCase)
+      .inTransientScope();
+
+    container
+      .bind<GetProductReviewsUseCase>(TYPES.GetProductReviewsUseCase)
+      .to(GetProductReviewsUseCase)
+      .inTransientScope();
+
+    container
+      .bind<CreateProductReviewUseCase>(TYPES.CreateProductReviewUseCase)
+      .to(CreateProductReviewUseCase)
+      .inTransientScope();
+
+    container
+      .bind<GetProductQnAUseCase>(TYPES.GetProductQnAUseCase)
+      .to(GetProductQnAUseCase)
+      .inTransientScope();
+
+    container
+      .bind<CreateProductQnAUseCase>(TYPES.CreateProductQnAUseCase)
+      .to(CreateProductQnAUseCase)
+      .inTransientScope();
+
+    container
+      .bind<AnswerProductQnAUseCase>(TYPES.AnswerProductQnAUseCase)
+      .to(AnswerProductQnAUseCase)
+      .inTransientScope();
+
+    container
+      .bind<UpdateInventoryUseCase>(TYPES.UpdateInventoryUseCase)
+      .to(UpdateInventoryUseCase)
+      .inTransientScope();
+
+    // Category UseCase 바인딩
+    container
+      .bind<GetCategoryListUseCase>(TYPES.GetCategoryListUseCase)
+      .to(GetCategoryListUseCase)
+      .inTransientScope();
+
+    container
+      .bind<GetCategoryDetailUseCase>(TYPES.GetCategoryDetailUseCase)
+      .to(GetCategoryDetailUseCase)
+      .inTransientScope();
+
+    container
+      .bind<CreateCategoryUseCase>(TYPES.CreateCategoryUseCase)
+      .to(CreateCategoryUseCase)
+      .inTransientScope();
+
+    container
+      .bind<UpdateCategoryUseCase>(TYPES.UpdateCategoryUseCase)
+      .to(UpdateCategoryUseCase)
+      .inTransientScope();
+
+    container
+      .bind<DeleteCategoryUseCase>(TYPES.DeleteCategoryUseCase)
+      .to(DeleteCategoryUseCase)
+      .inTransientScope();
   }
 
   /**
-   * 컨트롤러 바인딩 - 새로 추가!
+   * 컨트롤러 바인딩
    */
   private static bindControllers(container: Container): void {
     container
       .bind<ProductController>(TYPES.ProductController)
       .to(ProductController)
+      .inSingletonScope();
+
+    container
+      .bind<CategoryController>(TYPES.CategoryController)
+      .to(CategoryController)
       .inSingletonScope();
   }
 

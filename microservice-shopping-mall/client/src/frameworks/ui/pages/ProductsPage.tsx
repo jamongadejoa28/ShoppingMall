@@ -1,13 +1,14 @@
-// ProductsPage.tsx - 모든 문제점 해결된 상품 목록 페이지
+// ProductsPage.tsx - 쿠팡 스타일 상품 목록 페이지
 // Clean Architecture: UI Pages Layer
 // 위치: client/src/frameworks/ui/pages/ProductsPage.tsx
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import SearchFilters, { FilterValues } from '../components/SearchFilters';
+import SearchFilters from '../components/SearchFilters';
+import { useProductImage } from '../../../shared/hooks/useProductImage';
 
 // ========================================
-// Types & Interfaces
+// Types & Interfaces (새로운 스키마 반영)
 // ========================================
 
 interface ProductData {
@@ -15,16 +16,25 @@ interface ProductData {
   name: string;
   description: string;
   price: number;
-  discountPrice?: number;
+  original_price?: number; // 할인 전 가격
+  discountPrice?: number; // 할인된 가격 (현재 가격과 동일)
   brand: string;
+  sku: string;
+  rating: number; // 평점 (0-5)
+  review_count: number; // 리뷰 수
+  is_featured: boolean; // 추천상품
   tags: string[];
   category: {
+    id: string;
     name: string;
+    slug: string;
   };
   inventory: {
     availableQuantity: number;
-    status: string;
+    inventory_status: string;
   };
+  image_urls: string[];
+  thumbnail_url?: string;
 }
 
 interface ApiResponse {
@@ -41,13 +51,33 @@ interface ApiResponse {
     };
     filters: {
       appliedBrand?: string;
+      appliedCategory?: string;
       appliedPriceRange?: {
         min: number;
         max: number;
       };
       appliedSearch?: string;
+      appliedSort?: string;
     };
   };
+}
+
+// CategoryData 인터페이스 제거됨 - 현재 사용되지 않음
+// interface CategoryData {
+//   id: string;
+//   name: string;
+//   slug: string;
+//   product_count: number;
+// }
+
+interface FilterValues {
+  search: string;
+  category: string[];
+  brand: string[];
+  minPrice: number | null;
+  maxPrice: number | null;
+  sortBy: string; // 'price' | 'name' | 'createdAt'
+  sortOrder: 'asc' | 'desc';
 }
 
 // ========================================
@@ -61,22 +91,20 @@ const parseFiltersFromUrl = (searchParams: URLSearchParams): FilterValues => {
   const brand = searchParams.get('brand');
   const brands = brand ? brand.split(',').filter(Boolean) : [];
 
-  const productType = searchParams.get('productType');
-  const productTypes = productType
-    ? productType.split(',').filter(Boolean)
-    : [];
+  const category = searchParams.get('category');
+  const categories = category ? category.split(',').filter(Boolean) : [];
 
   return {
     search: searchParams.get('search') || '',
+    category: categories,
     brand: brands,
-    productType: productTypes,
     minPrice: searchParams.get('minPrice')
       ? parseInt(searchParams.get('minPrice')!)
       : null,
     maxPrice: searchParams.get('maxPrice')
       ? parseInt(searchParams.get('maxPrice')!)
       : null,
-    sortBy: searchParams.get('sortBy') || 'createdAt',
+    sortBy: searchParams.get('sortBy') || 'created_desc',
     sortOrder: (searchParams.get('sortOrder') as 'asc' | 'desc') || 'desc',
   };
 };
@@ -96,12 +124,12 @@ const buildUrlFromFilters = (
     params.set('search', filters.search.trim());
   }
 
-  if (filters.brand.length > 0) {
-    params.set('brand', filters.brand.join(','));
+  if (filters.category.length > 0) {
+    params.set('category', filters.category.join(','));
   }
 
-  if (filters.productType.length > 0) {
-    params.set('productType', filters.productType.join(','));
+  if (filters.brand.length > 0) {
+    params.set('brand', filters.brand.join(','));
   }
 
   if (filters.minPrice !== null) {
@@ -133,47 +161,32 @@ const buildApiQuery = (filters: FilterValues, page: number = 1): string => {
     params.set('search', filters.search.trim());
   }
 
-  // 백엔드가 단일 브랜드만 지원하므로 첫 번째 브랜드만 사용
+  // 다중 카테고리 지원 (쉼표로 구분)
+  if (filters.category.length > 0) {
+    params.set('category', filters.category.join(','));
+  }
+
+  // 다중 브랜드 지원 (쉼표로 구분)
   if (filters.brand.length > 0) {
-    params.set('brand', filters.brand[0]);
+    params.set('brand', filters.brand.join(','));
   }
 
-  if (filters.minPrice !== null) {
-    params.set('minPrice', filters.minPrice.toString());
+  // 가격 필터링 - 유효성 검사 추가
+  if (filters.minPrice !== null && filters.minPrice >= 0) {
+    params.set('minPrice', Math.floor(filters.minPrice).toString());
   }
 
-  if (filters.maxPrice !== null) {
-    params.set('maxPrice', filters.maxPrice.toString());
+  if (filters.maxPrice !== null && filters.maxPrice >= 0) {
+    params.set('maxPrice', Math.floor(filters.maxPrice).toString());
   }
 
-  // ✅ 수정: sortBy와 sortOrder를 분리해서 전송 (백엔드 API에 맞춤)
+  // 정렬 기준: 백엔드가 기대하는 결합된 형태로 전송
   params.set('sortBy', filters.sortBy);
-  params.set('sortOrder', filters.sortOrder);
 
   return params.toString();
 };
 
-/**
- * 상품 타입 필터링 (클라이언트 사이드)
- * 백엔드에서 상품 타입 필터를 지원하지 않으므로 클라이언트에서 처리
- */
-const filterProductsByType = (
-  products: ProductData[],
-  productTypes: string[]
-): ProductData[] => {
-  if (productTypes.length === 0) {
-    return products;
-  }
-
-  return products.filter(product => {
-    if (!product.tags || product.tags.length === 0) {
-      return false;
-    }
-
-    const productType = product.tags[0]; // tags의 첫 번째 단어
-    return productTypes.includes(productType);
-  });
-};
+// productType 필터링 제거됨 - 단순화된 스키마에서 사용하지 않음
 
 // ========================================
 // ProductsPage Component
@@ -188,7 +201,6 @@ const ProductsPage: React.FC = () => {
   const navigate = useNavigate();
 
   const [allProducts, setAllProducts] = useState<ProductData[]>([]); // 모든 상품 (API에서 받은 원본)
-  const [filteredProducts, setFilteredProducts] = useState<ProductData[]>([]); // 필터링된 상품
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState({
@@ -217,10 +229,6 @@ const ProductsPage: React.FC = () => {
 
       try {
         const queryString = buildApiQuery(filtersToUse, page);
-        console.log(
-          'API 요청 URL:',
-          `http://localhost:3001/api/v1/products?${queryString}`
-        ); // 디버깅용
 
         const response = await fetch(
           `http://localhost:3001/api/v1/products?${queryString}`
@@ -244,7 +252,6 @@ const ProductsPage: React.FC = () => {
         const errorMessage =
           err.message || '상품 목록을 불러오는 중 오류가 발생했습니다.';
         setError(errorMessage);
-        console.error('API Error:', err);
       } finally {
         setLoading(false);
       }
@@ -253,14 +260,9 @@ const ProductsPage: React.FC = () => {
   );
 
   // ========================================
-  // Client-side Filtering
+  // Client-side Filtering 제거됨
   // ========================================
-
-  // 상품 타입 필터링 적용 (클라이언트 사이드)
-  useEffect(() => {
-    const filtered = filterProductsByType(allProducts, filters.productType);
-    setFilteredProducts(filtered);
-  }, [allProducts, filters.productType]);
+  // productType 필터링이 제거되어 별도 클라이언트 필터링 불필요
 
   // ========================================
   // Event Handlers
@@ -268,7 +270,7 @@ const ProductsPage: React.FC = () => {
 
   const handleFiltersChange = useCallback(
     (newFilters: FilterValues) => {
-      const urlParams = buildUrlFromFilters(newFilters, 1); // 필터 변경 시 1페이지로 이동
+      const urlParams = buildUrlFromFilters(newFilters, 1);
       setSearchParams(urlParams ? `?${urlParams}` : '');
     },
     [setSearchParams]
@@ -310,35 +312,79 @@ const ProductsPage: React.FC = () => {
     return new Intl.NumberFormat('ko-KR').format(price) + '원';
   };
 
-  const getStockStatusColor = (status: string): string => {
-    switch (status.toLowerCase()) {
-      case 'in_stock':
-        return 'text-green-600 bg-green-50';
-      case 'low_stock':
-        return 'text-yellow-600 bg-yellow-50';
-      case 'out_of_stock':
-        return 'text-red-600 bg-red-50';
-      default:
-        return 'text-gray-600 bg-gray-50';
+  const getStockStatusColor = (availableQuantity: number): string => {
+    if (availableQuantity === 0) {
+      return 'text-red-600 bg-red-50';
+    } else if (availableQuantity < 20) {
+      return 'text-yellow-600 bg-yellow-50';
+    } else {
+      return 'text-green-600 bg-green-50';
     }
   };
 
-  const getStockStatusText = (status: string): string => {
-    switch (status.toLowerCase()) {
-      case 'in_stock':
-        return '재고 있음';
-      case 'low_stock':
-        return '재고 부족';
-      case 'out_of_stock':
-        return '품절';
-      default:
-        return '확인 중';
+  const getStockStatusText = (availableQuantity: number): string => {
+    if (availableQuantity === 0) {
+      return '품절';
+    } else if (availableQuantity < 20) {
+      return '품절 임박';
+    } else {
+      return '재고 충분';
     }
   };
 
-  // 현재 표시할 상품 목록 결정 (상품 타입 필터 적용 고려)
-  const displayProducts =
-    filters.productType.length > 0 ? filteredProducts : allProducts;
+  // 현재 표시할 상품 목록 (단순화된 로직)
+  const displayProducts = allProducts;
+
+  // ========================================
+  // 이미지 컴포넌트
+  // ========================================
+
+  const ProductImage: React.FC<{ product: ProductData }> = ({ product }) => {
+    const [imageError, setImageError] = useState(false);
+    const [imageLoaded, setImageLoaded] = useState(false);
+
+    // 클린 코드: 커스텀 훅을 사용하여 이미지 URL 생성
+    const imageSrc = useProductImage(product);
+
+    return (
+      <div className="aspect-square bg-gray-100 flex items-center justify-center group-hover:bg-gray-200 transition-colors">
+        {!imageError ? (
+          <img
+            src={imageSrc}
+            alt={product.name}
+            className={`w-full h-full object-cover transition-opacity ${
+              imageLoaded ? 'opacity-100' : 'opacity-0'
+            }`}
+            onLoad={() => {
+              setImageLoaded(true);
+            }}
+            onError={() => {
+              setImageError(true);
+            }}
+          />
+        ) : (
+          <svg
+            className="h-16 w-16 text-gray-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+            />
+          </svg>
+        )}
+        {!imageLoaded && !imageError && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400"></div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // ========================================
   // Render
@@ -381,52 +427,6 @@ const ProductsPage: React.FC = () => {
             </svg>
             <span className="text-blue-800">
               <strong>"{filters.search}"</strong>로 검색한 결과입니다.
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* 다중 브랜드 선택 시 알림 */}
-      {filters.brand.length > 1 && (
-        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <div className="flex items-center gap-2">
-            <svg
-              className="h-5 w-5 text-blue-400"
-              fill="currentColor"
-              viewBox="0 0 20 20"
-            >
-              <path
-                fillRule="evenodd"
-                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-                clipRule="evenodd"
-              />
-            </svg>
-            <span className="text-blue-800">
-              현재 백엔드는 단일 브랜드 필터링만 지원합니다.{' '}
-              <strong>{filters.brand[0]}</strong> 브랜드로 검색됩니다.
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* 상품 타입 필터 적용 알림 */}
-      {filters.productType.length > 0 && (
-        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-          <div className="flex items-center gap-2">
-            <svg
-              className="h-5 w-5 text-green-400"
-              fill="currentColor"
-              viewBox="0 0 20 20"
-            >
-              <path
-                fillRule="evenodd"
-                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                clipRule="evenodd"
-              />
-            </svg>
-            <span className="text-green-800">
-              상품 타입 필터 적용됨:{' '}
-              <strong>{filters.productType.join(', ')}</strong>
             </span>
           </div>
         </div>
@@ -513,22 +513,8 @@ const ProductsPage: React.FC = () => {
                   onClick={() => handleProductClick(product.id)}
                   className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow cursor-pointer group"
                 >
-                  {/* 상품 이미지 플레이스홀더 */}
-                  <div className="aspect-square bg-gray-100 flex items-center justify-center group-hover:bg-gray-200 transition-colors">
-                    <svg
-                      className="h-16 w-16 text-gray-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                      />
-                    </svg>
-                  </div>
+                  {/* 상품 이미지 */}
+                  <ProductImage product={product} />
 
                   {/* 상품 정보 */}
                   <div className="p-4">
@@ -580,12 +566,23 @@ const ProductsPage: React.FC = () => {
                     {/* 가격 정보 */}
                     <div className="flex items-center justify-between mb-3">
                       <div>
-                        {product.discountPrice ? (
+                        {product.discountPrice &&
+                        product.price > product.discountPrice ? (
                           <div>
-                            <span className="text-lg font-bold text-red-600">
-                              {formatPrice(product.discountPrice)}
-                            </span>
-                            <span className="text-sm text-gray-500 line-through ml-2">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-lg font-bold text-red-600">
+                                {formatPrice(product.discountPrice)}
+                              </span>
+                              <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded font-medium">
+                                {Math.round(
+                                  ((product.price - product.discountPrice) /
+                                    product.price) *
+                                    100
+                                )}
+                                % 할인
+                              </span>
+                            </div>
+                            <span className="text-sm text-gray-500 line-through">
                               {formatPrice(product.price)}
                             </span>
                           </div>
@@ -600,9 +597,11 @@ const ProductsPage: React.FC = () => {
                     {/* 재고 상태 */}
                     <div className="flex items-center justify-between">
                       <span
-                        className={`text-xs px-2 py-1 rounded-full ${getStockStatusColor(product.inventory.status)}`}
+                        className={`text-xs px-2 py-1 rounded-full ${getStockStatusColor(product.inventory.availableQuantity)}`}
                       >
-                        {getStockStatusText(product.inventory.status)}
+                        {getStockStatusText(
+                          product.inventory.availableQuantity
+                        )}
                       </span>
                       <span className="text-xs text-gray-500">
                         재고: {product.inventory.availableQuantity}개

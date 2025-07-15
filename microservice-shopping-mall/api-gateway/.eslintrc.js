@@ -3,7 +3,8 @@ module.exports = {
     parserOptions: {
       ecmaVersion: 2020,
       sourceType: 'module',
-      project: './tsconfig.json',
+      project: ['./tsconfig.json'],
+      tsconfigRootDir: __dirname,
     },
     plugins: ['@typescript-eslint', 'prettier'],
     extends: [
@@ -40,6 +41,13 @@ module.exports = {
         rules: {
           'no-console': 'off',
           '@typescript-eslint/no-explicit-any': 'off',
+        },
+      },
+      {
+        files: ['**/app.ts', '**/server.ts'],
+        rules: {
+          'no-console': process.env.NODE_ENV === 'production' ? 'error' : 'off',
+          '@typescript-eslint/no-explicit-any': 'warn',
         },
       },
     ],

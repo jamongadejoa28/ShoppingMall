@@ -170,4 +170,186 @@ export class PostgreSQLUserRepository implements UserRepository {
       return await operation(transactionRepository);
     });
   }
+
+  /**
+   * Admin 전용: 사용자 목록 조회 (페이징, 검색, 필터링)
+   */
+  async findMany(options: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    role?: 'all' | 'customer' | 'admin';
+    isActive?: boolean;
+    sortBy?: 'name' | 'email' | 'createdAt' | 'lastLoginAt';
+    sortOrder?: 'asc' | 'desc';
+  }): Promise<{ users: User[]; total: number }> {
+    try {
+      const {
+        page = 1,
+        limit = 20,
+        search,
+        role = 'all',
+        isActive,
+        sortBy = 'createdAt',
+        sortOrder = 'desc'
+      } = options;
+
+      // QueryBuilder 생성
+      const queryBuilder = this.userRepository.createQueryBuilder('user');
+
+      // 검색 조건 (이름 또는 이메일)
+      if (search && search.trim()) {
+        queryBuilder.andWhere(
+          '(LOWER(user.name) LIKE LOWER(:search) OR LOWER(user.email) LIKE LOWER(:search))',
+          { search: `%${search.trim()}%` }
+        );
+      }
+
+      // 역할 필터링
+      if (role !== 'all') {
+        queryBuilder.andWhere('user.role = :role', { role });
+      }
+
+      // 활성 상태 필터링
+      if (isActive !== undefined) {
+        queryBuilder.andWhere('user.isActive = :isActive', { isActive });
+      }
+
+      // 정렬
+      const validSortFields = ['name', 'email', 'createdAt', 'lastLoginAt'];
+      if (validSortFields.includes(sortBy)) {
+        const orderDirection = sortOrder.toUpperCase() as 'ASC' | 'DESC';
+        queryBuilder.orderBy(`user.${sortBy}`, orderDirection);
+      } else {
+        queryBuilder.orderBy('user.createdAt', 'DESC');
+      }
+
+      // 페이징
+      const offset = (page - 1) * limit;
+      queryBuilder.skip(offset).take(limit);
+
+      // 실행
+      const [userEntities, total] = await queryBuilder.getManyAndCount();
+
+      // 도메인 객체로 변환
+      const users = userEntities.map(entity => entity.toDomain());
+
+      return { users, total };
+    } catch (error) {
+      this.handleDatabaseError(error, 'findMany');
+      throw error;
+    }
+  }
+
+  /**
+   * Admin 전용: 사용자 통계 조회
+   */
+  async getStatistics(): Promise<{
+    totalUsers: number;
+    activeUsers: number;
+    newUsersToday: number;
+    newUsersThisWeek: number;
+    newUsersThisMonth: number;
+    adminUsers: number;
+    customerUsers: number;
+    deactivatedUsers: number;
+    lastActivityCounts: {
+      today: number;
+      thisWeek: number;
+      thisMonth: number;
+    };
+  }> {
+    try {
+      // 현재 시간 기준점 설정
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const thisWeek = new Date(today.getTime() - (today.getDay() * 24 * 60 * 60 * 1000));
+      const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+      // 기본 통계 쿼리들을 병렬로 실행
+      const [
+        totalUsers,
+        activeUsers,
+        newUsersToday,
+        newUsersThisWeek,
+        newUsersThisMonth,
+        adminUsers,
+        customerUsers,
+        deactivatedUsers,
+        lastActivityToday,
+        lastActivityThisWeek,
+        lastActivityThisMonth
+      ] = await Promise.all([
+        // 전체 사용자 수
+        this.userRepository.count(),
+        
+        // 활성 사용자 수
+        this.userRepository.count({ where: { isActive: true } }),
+        
+        // 오늘 등록한 사용자 수
+        this.userRepository
+          .createQueryBuilder('user')
+          .where('user.createdAt >= :today', { today })
+          .getCount(),
+        
+        // 이번 주 등록한 사용자 수
+        this.userRepository
+          .createQueryBuilder('user')
+          .where('user.createdAt >= :thisWeek', { thisWeek })
+          .getCount(),
+        
+        // 이번 달 등록한 사용자 수
+        this.userRepository
+          .createQueryBuilder('user')
+          .where('user.createdAt >= :thisMonth', { thisMonth })
+          .getCount(),
+        
+        // 관리자 사용자 수
+        this.userRepository.count({ where: { role: 'admin' } }),
+        
+        // 일반 사용자 수
+        this.userRepository.count({ where: { role: 'customer' } }),
+        
+        // 비활성화된 사용자 수
+        this.userRepository.count({ where: { isActive: false } }),
+        
+        // 오늘 마지막 활동 사용자 수
+        this.userRepository
+          .createQueryBuilder('user')
+          .where('user.lastLoginAt >= :today', { today })
+          .getCount(),
+        
+        // 이번 주 마지막 활동 사용자 수
+        this.userRepository
+          .createQueryBuilder('user')
+          .where('user.lastLoginAt >= :thisWeek', { thisWeek })
+          .getCount(),
+        
+        // 이번 달 마지막 활동 사용자 수
+        this.userRepository
+          .createQueryBuilder('user')
+          .where('user.lastLoginAt >= :thisMonth', { thisMonth })
+          .getCount()
+      ]);
+
+      return {
+        totalUsers,
+        activeUsers,
+        newUsersToday,
+        newUsersThisWeek,
+        newUsersThisMonth,
+        adminUsers,
+        customerUsers,
+        deactivatedUsers,
+        lastActivityCounts: {
+          today: lastActivityToday,
+          thisWeek: lastActivityThisWeek,
+          thisMonth: lastActivityThisMonth
+        }
+      };
+    } catch (error) {
+      this.handleDatabaseError(error, 'getStatistics');
+      throw error;
+    }
+  }
 }

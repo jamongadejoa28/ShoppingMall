@@ -25,7 +25,8 @@
       "@shared/*": ["shared/*"],
       "@tests/*": ["tests/*"]
     },
-    "typeRoots": ["./node_modules/@types"]
+    "typeRoots": ["./node_modules/@types"],
+    "composite": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "build", "dist"]

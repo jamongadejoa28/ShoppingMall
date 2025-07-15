@@ -54,18 +54,11 @@ export class UpdateUserProfileUseCase
         name: updatedUser.name,
         email: updatedUser.email,
         role: updatedUser.role,
-        isEmailVerified: updatedUser.isEmailVerified,
         isActive: updatedUser.isActive,
         updatedAt: updatedUser.updatedAt,
       };
 
       // 조건부 프로퍼티 할당 (undefined가 아닌 경우에만)
-      if (updatedUser.phone !== undefined) {
-        userData.phone = updatedUser.phone;
-      }
-      if (updatedUser.address !== undefined) {
-        userData.address = updatedUser.address;
-      }
 
       const responseData: UpdateUserProfileResponse = {
         user: userData,
@@ -93,7 +86,7 @@ export class UpdateUserProfileUseCase
     }
 
     // 최소 하나의 업데이트 필드가 있는지 확인
-    if (!request.name && !request.phone && !request.address) {
+    if (!request.name && !request.phoneNumber && !request.address) {
       throw new DomainError(
         '업데이트할 정보를 입력해주세요',
         'NO_UPDATE_DATA',
@@ -124,10 +117,10 @@ export class UpdateUserProfileUseCase
     }
 
     // 전화번호 검증 (제공된 경우)
-    if (request.phone !== undefined) {
+    if (request.phoneNumber !== undefined) {
       if (
-        typeof request.phone !== 'string' ||
-        request.phone.trim().length === 0
+        typeof request.phoneNumber !== 'string' ||
+        request.phoneNumber.trim().length === 0
       ) {
         throw new DomainError(
           '유효한 전화번호를 입력해주세요',
@@ -138,7 +131,7 @@ export class UpdateUserProfileUseCase
 
       // 기본적인 전화번호 형식 검증
       const phoneRegex = /^[0-9-+\s()]+$/;
-      if (!phoneRegex.test(request.phone)) {
+      if (!phoneRegex.test(request.phoneNumber)) {
         throw new DomainError(
           '올바른 전화번호 형식을 입력해주세요',
           'INVALID_PHONE_FORMAT',
@@ -222,13 +215,6 @@ export class UpdateUserProfileUseCase
         updateData.name = request.name.trim();
       }
 
-      if (request.phone !== undefined) {
-        updateData.phone = request.phone.trim();
-      }
-
-      if (request.address !== undefined) {
-        updateData.address = request.address.trim();
-      }
 
       // User Entity의 updateProfile 메서드 사용
       user.updateProfile(updateData);

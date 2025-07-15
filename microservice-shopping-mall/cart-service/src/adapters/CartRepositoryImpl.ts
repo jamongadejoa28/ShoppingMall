@@ -265,6 +265,49 @@ export class CartRepositoryImpl implements CartRepository {
     }
   }
 
+  /**
+   * 장바구니와 관련된 모든 데이터를 완전히 삭제
+   * cart_items도 함께 삭제하여 orphan 데이터 방지
+   */
+  async deleteCart(cartId: string): Promise<void> {
+    if (!cartId || !this.isValidUUID(cartId)) {
+      console.warn(`[CartRepository] 유효하지 않은 cartId: ${cartId}`);
+      return;
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      console.log(`[CartRepository] 장바구니 완전 삭제 시작: cartId=${cartId}`);
+
+      // 1. 먼저 cart_items 삭제
+      const deleteItemsResult = await queryRunner.manager.query(
+        "DELETE FROM cart_items WHERE cart_id = $1",
+        [cartId]
+      );
+      console.log(`[CartRepository] cart_items 삭제 완료: ${deleteItemsResult.length || 0}개`);
+
+      // 2. 그 다음 cart 삭제
+      const deleteCartResult = await queryRunner.manager.query(
+        "DELETE FROM carts WHERE id = $1",
+        [cartId]
+      );
+      console.log(`[CartRepository] cart 삭제 완료: cartId=${cartId}`);
+
+      await queryRunner.commitTransaction();
+      console.log(`[CartRepository] 장바구니 완전 삭제 성공: cartId=${cartId}`);
+
+    } catch (error: any) {
+      await queryRunner.rollbackTransaction();
+      console.error(`❌ [CartRepository] 장바구니 삭제 오류 (rollback 완료): cartId=${cartId}`, error);
+      throw new Error(`장바구니 삭제 중 오류가 발생했습니다: ${error.message}`);
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
   private isValidUUID(uuid: string): boolean {
     const uuidRegex =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

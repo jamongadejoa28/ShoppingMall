@@ -119,11 +119,6 @@ export class CacheServiceImpl implements CacheService {
    */
   async get<T>(key: string): Promise<T | null> {
     try {
-      if (!this.isConnected) {
-        console.warn("[CacheService] Redis 연결되지 않음 - 캐시 조회 건너뜀");
-        return null;
-      }
-
       const fullKey = this.getFullKey(key);
       const rawValue = await this.redis.get(fullKey);
 
@@ -148,11 +143,6 @@ export class CacheServiceImpl implements CacheService {
    */
   async set(key: string, value: any, ttl?: number): Promise<void> {
     try {
-      if (!this.isConnected) {
-        console.warn("[CacheService] Redis 연결되지 않음 - 캐시 저장 건너뜀");
-        return;
-      }
-
       const fullKey = this.getFullKey(key);
       let serializedValue = JSON.stringify(value);
 
@@ -354,10 +344,7 @@ export class CacheServiceImpl implements CacheService {
    */
   async healthCheck(): Promise<boolean> {
     try {
-      if (!this.isConnected) {
-        return false;
-      }
-
+      // lazyConnect 때문에 실제 연결을 시도해봐야 함
       const result = await this.redis.ping();
       return result === "PONG";
     } catch (error) {

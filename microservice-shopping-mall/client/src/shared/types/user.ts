@@ -3,14 +3,14 @@ export interface User {
   email: string;
   name: string;
   avatar?: string;
-  role: UserRole;
+  role: string;
+  phoneNumber?: string;
+  postalCode?: string;
+  address?: string;
+  detailAddress?: string;
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
-}
-
-export enum UserRole {
-  ADMIN = 'admin',
-  CUSTOMER = 'customer',
 }
 
 export interface AuthTokens {
@@ -27,4 +27,9 @@ export interface RegisterData {
   email: string;
   password: string;
   name: string;
+  phoneNumber?: string;
+  postalCode?: string;
+  address?: string;
+  detailAddress?: string;
+  role?: string;
 }

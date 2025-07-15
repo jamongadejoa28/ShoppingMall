@@ -12,7 +12,7 @@ describe("Product Entity", () => {
       const productData = {
         name: "MacBook Pro 16인치",
         description: "Apple M3 Pro 칩, 18GB 메모리, 512GB SSD",
-        price: 3190000,
+        originalPrice: 3190000,
         categoryId: "category-123",
         brand: "Apple",
         sku: "MBP-16-M3-512",
@@ -31,7 +31,7 @@ describe("Product Entity", () => {
       expect(product).toBeInstanceOf(Product);
       expect(product.getName()).toBe(productData.name);
       expect(product.getDescription()).toBe(productData.description);
-      expect(product.getPrice()).toBe(productData.price);
+      expect(product.getPrice()).toBe(productData.originalPrice);
       expect(product.getCategoryId()).toBe(productData.categoryId);
       expect(product.getBrand()).toBe(productData.brand);
       expect(product.getSku()).toBe(productData.sku);
@@ -48,13 +48,17 @@ describe("Product Entity", () => {
         id: "product-123",
         name: "iPhone 15 Pro",
         description: "티타늄 디자인, A17 Pro 칩",
+        originalPrice: 1550000,
         price: 1550000,
         categoryId: "category-456",
         brand: "Apple",
         sku: "IPH-15-PRO-256",
         weight: 0.187,
         dimensions: { width: 7.09, height: 14.67, depth: 0.83 },
+        rating: 4.5,
+        reviewCount: 128,
         isActive: true,
+        isFeatured: false,
         createdAt: new Date("2024-01-01"),
         updatedAt: new Date("2024-01-15"),
       };
@@ -78,7 +82,7 @@ describe("Product Entity", () => {
       const invalidData = {
         name: "",
         description: "설명",
-        price: 10000,
+        originalPrice: 10000,
         categoryId: "category-123",
         brand: "Brand",
         sku: "SKU-123",
@@ -93,7 +97,7 @@ describe("Product Entity", () => {
       const invalidData = {
         name: "A".repeat(201), // 200자 초과
         description: "설명",
-        price: 10000,
+        originalPrice: 10000,
         categoryId: "category-123",
         brand: "Brand",
         sku: "SKU-123",
@@ -110,7 +114,7 @@ describe("Product Entity", () => {
       const invalidData = {
         name: "상품명",
         description: "설명",
-        price: -1000,
+        originalPrice: -1000,
         categoryId: "category-123",
         brand: "Brand",
         sku: "SKU-123",
@@ -127,7 +131,7 @@ describe("Product Entity", () => {
       const invalidData = {
         name: "상품명",
         description: "설명",
-        price: 10000,
+        originalPrice: 10000,
         categoryId: "category-123",
         brand: "Brand",
         sku: "invalid sku!", // 공백과 특수문자 포함
@@ -144,7 +148,7 @@ describe("Product Entity", () => {
       const invalidData = {
         name: "상품명",
         description: "설명",
-        price: 10000,
+        originalPrice: 10000,
         categoryId: "category-123",
         brand: "B".repeat(101), // 100자 초과
         sku: "SKU-123",
@@ -164,7 +168,7 @@ describe("Product Entity", () => {
       product = Product.create({
         name: "테스트 상품",
         description: "테스트 설명",
-        price: 50000,
+        originalPrice: 50000,
         categoryId: "category-123",
         brand: "TestBrand",
         sku: "TEST-001",
@@ -200,6 +204,7 @@ describe("Product Entity", () => {
         name: "업데이트된 상품명",
         description: "업데이트된 설명",
         price: 60000,
+        originalPrice: 60000,
         brand: "UpdatedBrand",
       };
       const originalUpdatedAt = product.getUpdatedAt();
@@ -218,40 +223,40 @@ describe("Product Entity", () => {
       );
     });
 
-    it("할인 가격을 설정할 수 있어야 한다", () => {
-      // Given
-      const discountPrice = 40000;
-
-      // When
-      product.setDiscountPrice(discountPrice);
-
-      // Then
-      expect(product.getDiscountPrice()).toBe(discountPrice);
-      expect(product.getEffectivePrice()).toBe(discountPrice);
-      expect(product.hasDiscount()).toBe(true);
-    });
-
-    it("할인 가격이 원가보다 높으면 에러를 발생시켜야 한다", () => {
-      // Given
-      const invalidDiscountPrice = 60000; // 원가 50000보다 높음
-
-      // When & Then
-      expect(() => product.setDiscountPrice(invalidDiscountPrice)).toThrow(
-        "할인 가격은 원가보다 낮아야 합니다"
-      );
-    });
-
-    it("할인을 제거할 수 있어야 한다", () => {
-      // Given
-      product.setDiscountPrice(40000);
-
-      // When
-      product.removeDiscount();
+    it("할인 여부를 확인할 수 있어야 한다", () => {
+      // Given - originalPrice가 있는 상품 생성
+      const productWithDiscount = Product.create({
+        name: "할인 상품",
+        description: "설명",
+        originalPrice: 50000, // 할인 전 가격
+        categoryId: "category-123",
+        brand: "Brand",
+        sku: "SKU-DISCOUNT",
+      });
 
       // Then
-      expect(product.getDiscountPrice()).toBeUndefined();
-      expect(product.getEffectivePrice()).toBe(product.getPrice());
-      expect(product.hasDiscount()).toBe(false);
+      expect(productWithDiscount.hasDiscount()).toBe(true);
+      expect(productWithDiscount.getDiscountRate()).toBe(20); // 20% 할인
+      expect(productWithDiscount.getDiscountAmount()).toBe(10000);
+      expect(productWithDiscount.getDiscountPrice()).toBe(40000); // 현재 가격
+    });
+
+    it("할인이 없는 상품은 할인 방법이 undefined를 반환해야 한다", () => {
+      // Given - originalPrice가 없는 상품
+      const productWithoutDiscount = Product.create({
+        name: "일반 상품",
+        description: "설명",
+        originalPrice: 50000,
+        categoryId: "category-123",
+        brand: "Brand",
+        sku: "SKU-NORMAL",
+      });
+
+      // Then
+      expect(productWithoutDiscount.hasDiscount()).toBe(false);
+      expect(productWithoutDiscount.getDiscountRate()).toBe(0);
+      expect(productWithoutDiscount.getDiscountAmount()).toBe(0);
+      expect(productWithoutDiscount.getDiscountPrice()).toBeUndefined();
     });
   });
 
@@ -262,7 +267,7 @@ describe("Product Entity", () => {
       product = Product.create({
         name: "MacBook Pro 16인치 M3",
         description: "Apple 실리콘 M3 Pro 칩셋이 탑재된 고성능 노트북",
-        price: 3190000,
+        originalPrice: 3190000,
         categoryId: "category-123",
         brand: "Apple",
         sku: "MBP-16-M3-512",
@@ -307,7 +312,7 @@ describe("Product Entity", () => {
       const product = Product.create({
         name: "판매 상품",
         description: "설명",
-        price: 10000,
+        originalPrice: 10000,
         categoryId: "category-123",
         brand: "Brand",
         sku: "SKU-123",
@@ -326,7 +331,7 @@ describe("Product Entity", () => {
       const product = Product.create({
         name: "MacBook Pro 16인치 M3 Pro (512GB)",
         description: "설명",
-        price: 3190000,
+        originalPrice: 3190000,
         categoryId: "category-123",
         brand: "Apple",
         sku: "MBP-16-M3-512",
@@ -348,7 +353,7 @@ describe("Product Entity", () => {
         name: "테스트 상품",
         description:
           "이것은 매우 긴 상품 설명입니다. 상품의 다양한 특징과 기능을 자세히 설명하고 있습니다.",
-        price: 10000,
+        originalPrice: 10000,
         categoryId: "category-123",
         brand: "Brand",
         sku: "SKU-123",
@@ -361,9 +366,9 @@ describe("Product Entity", () => {
       expect(summary.id).toBe(product.getId());
       expect(summary.name).toBe(product.getName());
       expect(summary.price).toBe(product.getPrice());
-      expect(summary.effectivePrice).toBe(product.getEffectivePrice());
       expect(summary.brand).toBe(product.getBrand());
       expect(summary.isActive).toBe(product.isActive());
+      expect(summary.isFeatured).toBe(product.isFeatured());
       expect(summary.hasDiscount).toBe(product.hasDiscount());
     });
   });

@@ -2,51 +2,20 @@
 // Clean Architecture: UI Pages Layer
 // 위치: client/src/frameworks/ui/pages/CartPage.tsx
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { CartApiAdapter } from '../../../adapters/api/CartApiAdapter';
+import {
+  useCartActions,
+  useCartSummary,
+  CartItem as LocalCartItem,
+} from '../../state/cartStoreLocal';
+import { useAuthStore } from '../../state/authStore';
 import ConfirmDialog from '../components/ConfirmDialog';
 
 // =======================================
-// Types & Interfaces
+// Types & Interfaces (localStorage store에서 가져옴)
 // =======================================
-
-interface CartProduct {
-  id: string;
-  name: string;
-  price: number;
-  brand: string;
-  sku: string;
-  slug: string;
-  category: {
-    id: string;
-    name: string;
-    slug: string;
-  };
-  inventory: {
-    availableQuantity: number;
-    status: string;
-  };
-  imageUrls: string[];
-}
-
-interface CartItem {
-  product: CartProduct;
-  quantity: number;
-  addedAt: string;
-}
-
-interface Cart {
-  id: string;
-  userId?: string;
-  sessionId?: string;
-  items: CartItem[];
-  totalAmount: number;
-  totalQuantity: number;
-  createdAt: string;
-  updatedAt: string;
-}
 
 // =======================================
 // CartPage Component
@@ -54,12 +23,24 @@ interface Cart {
 
 const CartPage: React.FC = () => {
   // =======================================
-  // State Management
+  // Hooks
   // =======================================
 
-  const [cart, setCart] = useState<Cart | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuthStore();
+
+  // =======================================
+  // Store Hooks (localStorage 기반)
+  // =======================================
+
+  const { items, loading, error } = useCartSummary();
+  const { loadCart, removeItem, updateQuantity, removeSelectedItems } =
+    useCartActions();
+
+  // =======================================
+  // Local State Management
+  // =======================================
+
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -68,45 +49,27 @@ const CartPage: React.FC = () => {
     productName?: string;
   }>({ isOpen: false, type: 'single' });
 
-  // CartApiAdapter를 useMemo로 메모이제이션하여 재생성 방지
-  const cartApi = useMemo(() => new CartApiAdapter(), []);
-
   // =======================================
-  // API Functions
+  // Effects & Initialization
   // =======================================
 
-  const fetchCart = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const cartData = await cartApi.getCart();
-      setCart(cartData);
-      // 기본적으로 모든 아이템을 선택 상태로 설정 (안전한 처리)
-      if (cartData && cartData.items && cartData.items.length > 0) {
-        const allItemIds = cartData.items.map(item => item.product.id);
-        setSelectedItems(new Set(allItemIds));
-      } else {
-        setSelectedItems(new Set());
-      }
-    } catch (err: any) {
-      // 장바구니가 비어있는 경우는 에러가 아니므로 빈 장바구니로 설정
-      setCart({
-        id: '',
-        items: [],
-        totalAmount: 0,
-        totalQuantity: 0,
-        createdAt: '',
-        updatedAt: '',
-      });
+  useEffect(() => {
+    // 장바구니 로드
+    loadCart();
+  }, [loadCart]);
+
+  // 장바구니 아이템이 변경될 때마다 전체 선택 상태로 초기화
+  useEffect(() => {
+    if (items && items.length > 0) {
+      const allItemIds = items.map((item: LocalCartItem) => item.product.id);
+      setSelectedItems(new Set(allItemIds));
+    } else {
       setSelectedItems(new Set());
-      // 토스트 에러 메시지 제거
-    } finally {
-      setLoading(false);
     }
-  }, [cartApi]); // cartApi 종속성 추가
+  }, [items]);
 
   const handleRemoveItem = useCallback(
-    async (productId: string, productName?: string) => {
+    (productId: string, productName?: string) => {
       setConfirmDialog({
         isOpen: true,
         type: 'single',
@@ -121,10 +84,8 @@ const CartPage: React.FC = () => {
     if (!confirmDialog.productId) return;
 
     try {
-      await cartApi.removeFromCart(confirmDialog.productId);
+      await removeItem(confirmDialog.productId);
       toast.success('상품을 삭제했습니다.');
-      // 장바구니 다시 로드
-      fetchCart();
       // 선택된 아이템에서 제거
       setSelectedItems(prev => {
         const newSet = new Set(prev);
@@ -136,15 +97,7 @@ const CartPage: React.FC = () => {
     } finally {
       setConfirmDialog({ isOpen: false, type: 'single' });
     }
-  }, [confirmDialog.productId, fetchCart, cartApi]);
-
-  // =======================================
-  // Effects
-  // =======================================
-
-  useEffect(() => {
-    fetchCart();
-  }, [fetchCart]);
+  }, [confirmDialog.productId, removeItem]);
 
   // =======================================
   // Event Handlers
@@ -161,10 +114,11 @@ const CartPage: React.FC = () => {
   };
 
   const handleSelectAll = () => {
-    if (cart && selectedItems.size === cart.items.length) {
+    if (items && selectedItems.size === items.length) {
       setSelectedItems(new Set()); // 전체 선택 해제
     } else {
-      const allProductIds = cart?.items.map(item => item.product.id) || [];
+      const allProductIds =
+        items?.map((item: LocalCartItem) => item.product.id) || [];
       setSelectedItems(new Set(allProductIds)); // 전체 선택
     }
   };
@@ -183,16 +137,15 @@ const CartPage: React.FC = () => {
 
   const confirmRemoveSelected = useCallback(async () => {
     try {
-      // 선택된 상품들을 순차적으로 삭제
-      const deletePromises = Array.from(selectedItems).map(productId =>
-        cartApi.removeFromCart(productId)
+      const selectedProductIds = Array.from(selectedItems);
+
+      // localStorage 기반이므로 한 번에 삭제 가능
+      await removeSelectedItems(selectedProductIds);
+
+      toast.success(
+        `선택된 상품 ${selectedProductIds.length}개를 삭제했습니다.`
       );
 
-      await Promise.all(deletePromises);
-      toast.success('선택된 상품들을 삭제했습니다.');
-
-      // 장바구니 다시 로드
-      fetchCart();
       // 선택 상태 초기화
       setSelectedItems(new Set());
     } catch (error: any) {
@@ -200,30 +153,43 @@ const CartPage: React.FC = () => {
     } finally {
       setConfirmDialog({ isOpen: false, type: 'bulk' });
     }
-  }, [selectedItems, cartApi, fetchCart]);
+  }, [selectedItems, removeSelectedItems]);
 
   const handleUpdateQuantity = useCallback(
     async (productId: string, newQuantity: number) => {
       if (newQuantity <= 0) {
-        const item = cart?.items.find(item => item.product.id === productId);
+        const item = items?.find(
+          (item: LocalCartItem) => item.product.id === productId
+        );
         return handleRemoveItem(productId, item?.product.name);
       }
 
       try {
-        await cartApi.updateQuantity(productId, newQuantity);
+        await updateQuantity(productId, newQuantity);
         toast.success('수량을 변경했습니다.');
-        // 장바구니 다시 로드
-        fetchCart();
       } catch (error: any) {
         toast.error(error.message || '수량 변경 중 오류가 발생했습니다.');
       }
     },
-    [fetchCart, handleRemoveItem, cartApi, cart]
+    [updateQuantity, handleRemoveItem, items]
   );
 
   const handleCheckout = () => {
-    // TODO: 주문/결제 페이지로 이동
-    toast.error('로그인 후 이용해주세요.');
+    // 선택된 상품이 없으면 주문 불가
+    if (selectedItems.size === 0) {
+      toast.error('주문할 상품을 선택해주세요.');
+      return;
+    }
+
+    // 인증 상태 확인
+    if (!isAuthenticated) {
+      // 미인증 사용자는 로그인 페이지로 이동 (주문 페이지로 돌아오도록 redirect 파라미터 설정)
+      navigate('/login?redirect=/checkout');
+      return;
+    }
+
+    // 인증된 사용자는 주문 페이지로 이동
+    navigate('/checkout');
   };
 
   // =======================================
@@ -235,9 +201,13 @@ const CartPage: React.FC = () => {
   };
 
   const selectedItemsPrice =
-    cart?.items
-      .filter(item => selectedItems.has(item.product.id))
-      .reduce((sum, item) => sum + item.product.price * item.quantity, 0) || 0;
+    items
+      ?.filter((item: LocalCartItem) => selectedItems.has(item.product.id))
+      .reduce(
+        (sum: number, item: LocalCartItem) =>
+          sum + item.product.price * item.quantity,
+        0
+      ) || 0;
 
   // =======================================
   // Loading & Error States
@@ -258,7 +228,7 @@ const CartPage: React.FC = () => {
         <p className="text-red-600 font-semibold">오류가 발생했습니다.</p>
         <p className="text-red-500 mt-2">{error}</p>
         <button
-          onClick={fetchCart}
+          onClick={loadCart}
           className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
         >
           다시 시도
@@ -267,7 +237,7 @@ const CartPage: React.FC = () => {
     );
   }
 
-  if (!cart || cart.items.length === 0) {
+  if (!items || items.length === 0) {
     return (
       <div className="container mx-auto p-8 text-center">
         <h1 className="text-3xl font-bold mb-4">장바구니</h1>
@@ -301,13 +271,12 @@ const CartPage: React.FC = () => {
                   id="selectAll"
                   className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   checked={
-                    cart.items.length > 0 &&
-                    selectedItems.size === cart.items.length
+                    items.length > 0 && selectedItems.size === items.length
                   }
                   onChange={handleSelectAll}
                 />
                 <label htmlFor="selectAll" className="ml-3 text-sm font-medium">
-                  전체선택 ({selectedItems.size}/{cart.items.length})
+                  전체선택 ({selectedItems.size}/{items.length})
                 </label>
               </div>
               <button
@@ -320,7 +289,7 @@ const CartPage: React.FC = () => {
 
             {/* 아이템 목록 */}
             <div className="space-y-4">
-              {cart.items.map(item => (
+              {items.map((item: LocalCartItem) => (
                 <div
                   key={item.product.id}
                   className="flex items-start gap-4 border-b py-4"
@@ -334,10 +303,15 @@ const CartPage: React.FC = () => {
                   <div className="w-24 h-24 bg-gray-100 rounded-lg flex-shrink-0">
                     <img
                       src={
-                        item.product.imageUrls[0] ||
-                        `https://via.placeholder.com/150?text=${item.product.name}`
+                        item.product.image_urls &&
+                        item.product.image_urls.length > 0
+                          ? item.product.image_urls[0]
+                          : item.product.imageUrls &&
+                              item.product.imageUrls.length > 0
+                            ? item.product.imageUrls[0]
+                            : `https://via.placeholder.com/150?text=${encodeURIComponent(item.product.name || 'Product')}`
                       }
-                      alt={item.product.name}
+                      alt={item.product.name || 'Product Image'}
                       className="w-full h-full object-cover rounded-lg"
                     />
                   </div>
@@ -450,24 +424,25 @@ const CartPage: React.FC = () => {
       </div>
 
       {/* 삭제 확인 다이얼로그 */}
-      <ConfirmDialog
-        isOpen={confirmDialog.isOpen}
-        title="상품 삭제"
-        message={
-          confirmDialog.type === 'single'
-            ? `'${confirmDialog.productName || '선택한 상품'}'을 삭제하시겠습니까?`
-            : `선택한 ${selectedItems.size}개 상품을 삭제하시겠습니까?`
-        }
-        confirmText="삭제"
-        cancelText="취소"
-        confirmButtonClass="bg-red-600 hover:bg-red-700 text-white"
-        onConfirm={
-          confirmDialog.type === 'single'
-            ? confirmRemoveItem
-            : confirmRemoveSelected
-        }
-        onCancel={() => setConfirmDialog({ isOpen: false, type: 'single' })}
-      />
+      {confirmDialog.isOpen && (
+        <ConfirmDialog
+          title="상품 삭제"
+          message={
+            confirmDialog.type === 'single'
+              ? `'${confirmDialog.productName || '선택한 상품'}'을 삭제하시겠습니까?`
+              : `선택한 ${selectedItems.size}개 상품을 삭제하시겠습니까?`
+          }
+          confirmText="삭제"
+          cancelText="취소"
+          confirmButtonClass="bg-red-600 hover:bg-red-700 text-white"
+          onConfirm={
+            confirmDialog.type === 'single'
+              ? confirmRemoveItem
+              : confirmRemoveSelected
+          }
+          onCancel={() => setConfirmDialog({ isOpen: false, type: 'single' })}
+        />
+      )}
     </div>
   );
 };

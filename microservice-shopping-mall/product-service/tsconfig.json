@@ -43,7 +43,6 @@
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "coverage"],
   "ts-node": {
-    "esm": true,
-    "experimentalSpecifierResolution": "node"
+    "transpileOnly": true
   }
 }

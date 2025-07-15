@@ -133,6 +133,19 @@ export function createCartRoutes(cartController: CartController): Router {
     }
   );
 
+  /**
+   * 장바구니 완전 삭제 (클라이언트 종료시 사용)
+   * DELETE /api/cart/delete
+   * 인증: 선택적 (JWT 토큰이 있으면 사용자 장바구니, 없으면 세션 장바구니)
+   */
+  router.delete(
+    "/delete",
+    authMiddleware.optional, // JWT 인증 선택적 적용
+    async (req, res) => {
+      await cartController.deleteCart(req, res);
+    }
+  );
+
   // ========================================
   // 사용자 관리 라우트
   // ========================================
@@ -152,6 +165,23 @@ export function createCartRoutes(cartController: CartController): Router {
     authMiddleware.required, // JWT 인증 필수
     async (req, res) => {
       await cartController.transferCart(req, res);
+    }
+  );
+
+  /**
+   * 세션 장바구니 정리 (클라이언트 종료시 사용)
+   * POST /api/cart/cleanup-session
+   * 인증: 불필요 (세션 ID만 필요)
+   *
+   * 시나리오:
+   * 1. 클라이언트 애플리케이션 종료시 호출
+   * 2. 세션에 연결된 장바구니 완전 삭제 (CASCADE DELETE)
+   * 3. 고아 데이터 정리
+   */
+  router.post(
+    "/cleanup-session",
+    async (req, res) => {
+      await cartController.cleanupSessionCart(req, res);
     }
   );
 
@@ -193,7 +223,9 @@ export function createCartRoutes(cartController: CartController): Router {
           "PUT /api/cart/items/:productId": "수량 변경",
           "DELETE /api/cart/items/:productId": "상품 제거",
           "DELETE /api/cart": "장바구니 비우기",
+          "DELETE /api/cart/delete": "장바구니 완전 삭제",
           "POST /api/cart/transfer": "장바구니 이전",
+          "POST /api/cart/cleanup-session": "세션 장바구니 정리",
           "GET /api/cart/health": "헬스체크",
         },
         authentication: {

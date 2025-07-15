@@ -40,20 +40,17 @@ export class ClearCartUseCase {
         throw new CartNotFoundError();
       }
 
-      // 2. 장바구니 비우기
-      cart.clear();
+      // 2. 장바구니 비우기 - 이제 DB에서도 완전 삭제
+      await this.cartRepository.delete(cart.getId());
+      
+      // 3. 캐시에서도 완전 삭제
+      await this.clearCache(request.userId, request.sessionId, cart.getId());
 
-      // 3. 장바구니 저장
-      const savedCart = await this.cartRepository.save(cart);
-
-      // 4. 캐시 업데이트
-      await this.updateCache(request.userId, request.sessionId, savedCart);
-
-      // 🔧 수정: API 일관성을 위해 비워진 cart 객체 반환
+      // 4. 빈 장바구니 응답 반환
       return {
         success: true,
-        cart: savedCart, // 비워진 장바구니 객체 반환
-        message: "장바구니가 비워졌습니다.",
+        cart: null, // 삭제되었으므로 null 반환
+        message: "장바구니가 완전히 비워졌습니다.",
       };
     } catch (error) {
       // 비즈니스 로직 에러는 그대로 전파
@@ -73,32 +70,28 @@ export class ClearCartUseCase {
   }
 
   /**
-   * 캐시 업데이트 (빈 장바구니 반영)
+   * 캐시 완전 삭제 (장바구니 전체 비우기)
    */
-  private async updateCache(
+  private async clearCache(
     userId?: string,
     sessionId?: string,
-    cart?: any
+    cartId?: string
   ): Promise<void> {
     try {
-      if (cart) {
-        // 빈 장바구니 데이터 캐시 (짧은 TTL)
-        await this.cacheService.set(`cart:${cart.getId()}`, cart, 300); // 5분
+      // 장바구니 데이터 캐시 삭제
+      if (cartId) {
+        await this.cacheService.delete(`cart:${cartId}`);
+      }
 
-        // 사용자/세션 매핑은 유지 (사용자가 다시 상품을 담을 수 있도록)
-        if (userId) {
-          await this.cacheService.set(`user:${userId}`, cart.getId(), 3600); // 1시간
-        }
-        if (sessionId) {
-          await this.cacheService.set(
-            `session:${sessionId}`,
-            cart.getId(),
-            300
-          ); // 5분
-        }
+      // 사용자/세션 매핑 캐시 삭제
+      if (userId) {
+        await this.cacheService.delete(`user:${userId}`);
+      }
+      if (sessionId) {
+        await this.cacheService.delete(`session:${sessionId}`);
       }
     } catch (error) {
-      console.error("[ClearCartUseCase] 캐시 업데이트 오류:", error);
+      console.error("[ClearCartUseCase] 캐시 삭제 오류:", error);
       // 캐시 오류는 무시 (graceful degradation)
     }
   }

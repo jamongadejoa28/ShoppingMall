@@ -3,8 +3,8 @@
 // client/src/frameworks/ui/pages/LoginPage.tsx
 // ========================================
 
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
@@ -44,8 +44,20 @@ const loginSchema = yup.object({
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login, isLoading } = useAuthStore();
   const [showPassword, setShowPassword] = useState(false);
+
+  // URL의 redirect 파라미터 처리
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const redirectPath = searchParams.get('redirect');
+
+    if (redirectPath) {
+      // redirect 경로를 sessionStorage에 저장
+      sessionStorage.setItem('redirectAfterLogin', redirectPath);
+    }
+  }, [location]);
 
   const {
     register,
