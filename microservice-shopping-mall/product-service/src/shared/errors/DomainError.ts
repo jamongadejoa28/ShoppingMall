@@ -1,14 +1,12 @@
 export class DomainError extends Error {
   public readonly code: string;
   public readonly statusCode: number;
-  public readonly details?: any;
 
-  constructor(message: string, code: string, statusCode: number = 400, details?: any) {
+  constructor(message: string, code: string, statusCode: number = 400) {
     super(message);
     this.name = "DomainError";
     this.code = code;
     this.statusCode = statusCode;
-    this.details = details;
 
     // 프로토타입 체인 유지 (TypeScript에서 Error 상속시 필요)
     Object.setPrototypeOf(this, DomainError.prototype);

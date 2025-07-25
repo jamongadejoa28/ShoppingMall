@@ -6,7 +6,6 @@
 import { Request, Response, NextFunction } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { HTTP_HEADERS, ApiResponse } from "../../shared/types";
-import { logger } from "../../infrastructure/logging/Logger";
 
 /**
  * Request ID 생성 미들웨어
@@ -24,7 +23,7 @@ export function requestIdMiddleware(
 }
 
 /**
- * 로깅 미들웨어 - 구조화된 로깅 적용
+ * 로깅 미들웨어
  */
 export function loggingMiddleware(
   req: Request,
@@ -34,30 +33,29 @@ export function loggingMiddleware(
   const startTime = Date.now();
   const requestId = (req as any).requestId;
 
-  // 요청 시작 로그
-  logger.http(`${req.method} ${req.originalUrl} - START`, {
-    requestId,
-    ...(req.user?.id && { userId: req.user.id }),
-    method: req.method,
-    url: req.originalUrl,
-    metadata: {
+  console.log(
+    `[${new Date().toISOString()}] [${requestId}] ${req.method} ${req.originalUrl} - START`,
+    {
+      method: req.method,
+      url: req.originalUrl,
       userAgent: req.headers["user-agent"],
       ip: req.ip,
       queryParams: Object.keys(req.query).length > 0 ? req.query : undefined,
     }
-  });
+  );
 
-  // 응답 완료 시 로그
   res.on("finish", () => {
     const duration = Date.now() - startTime;
-    logger.logRequest(req, res, duration);
+    console.log(
+      `[${new Date().toISOString()}] [${requestId}] ${req.method} ${req.originalUrl} - ${res.statusCode} (${duration}ms)`
+    );
   });
 
   next();
 }
 
 /**
- * 에러 핸들링 미들웨어 - 구조화된 로깅 적용
+ * 에러 핸들링 미들웨어
  */
 export function errorHandlingMiddleware(
   error: any,
@@ -68,19 +66,11 @@ export function errorHandlingMiddleware(
   const requestId = (req as any).requestId || "unknown";
   const timestamp = new Date().toISOString();
 
-  // 구조화된 에러 로깅
-  logger.error(`Request failed: ${req.method} ${req.originalUrl}`, {
-    requestId,
-    ...(req.user?.id && { userId: req.user.id }),
-    method: req.method,
+  console.error(`[${timestamp}] [${requestId}] ERROR:`, {
+    error: error.message,
+    stack: error.stack,
     url: req.originalUrl,
-    error,
-    statusCode: (error as any).statusCode || 500,
-    metadata: {
-      userAgent: req.headers["user-agent"],
-      ip: req.ip,
-      body: req.body
-    }
+    method: req.method,
   });
 
   if (res.headersSent) {
@@ -126,42 +116,30 @@ export function notFoundHandler(req: Request, res: Response): void {
 }
 
 /**
- * 헬스체크 핸들러 - 향상된 헬스체크 적용
+ * 헬스체크 핸들러
  */
-export async function healthCheckHandler(req: Request, res: Response): Promise<void> {
+export function healthCheckHandler(req: Request, res: Response): void {
   const requestId = (req as any).requestId || "unknown";
 
-  try {
-    const { healthChecker } = await import("../../infrastructure/health/HealthChecker");
-    const healthResult = await healthChecker.checkLiveness();
-
-    const response: ApiResponse<any> = {
-      success: healthResult.status === 'healthy',
-      message: `Product Service is ${healthResult.status}`,
-      data: healthResult,
+  const response: ApiResponse<any> = {
+    success: true,
+    message: "Product Service is healthy",
+    data: {
+      service: "product-service",
+      version: "1.0.0",
+      environment: process.env.NODE_ENV || "development",
       timestamp: new Date().toISOString(),
-      requestId,
-    };
-
-    const statusCode = healthResult.status === 'healthy' ? 200 : 503;
-    res.status(statusCode).json(response);
-  } catch (error) {
-    logger.error('Health check failed', { error: error as Error, requestId });
-    
-    const response: ApiResponse<null> = {
-      success: false,
-      message: "Health check failed",
-      error: {
-        code: "HEALTH_CHECK_ERROR",
-        details: (error as Error).message
+      uptime: process.uptime(),
+      memory: {
+        used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+        total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
       },
-      data: null,
-      timestamp: new Date().toISOString(),
-      requestId,
-    };
+    },
+    timestamp: new Date().toISOString(),
+    requestId,
+  };
 
-    res.status(503).json(response);
-  }
+  res.status(200).json(response);
 }
 
 /**

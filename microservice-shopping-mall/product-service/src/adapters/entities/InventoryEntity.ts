@@ -39,13 +39,14 @@ export enum InventoryStatus {
  */
 @Entity("inventories")
 @Index(["productId"], { unique: true }) // Product와 1:1 관계
+@Index(["status"]) // 상태별 조회 최적화
 @Index(["availableQuantity"]) // 가용 수량별 조회
 @Index(["location"]) // 창고별 조회
 export class InventoryEntity {
   @PrimaryGeneratedColumn("uuid")
   id!: string;
 
-  @Column({ type: "uuid", nullable: false, unique: true, name: "product_id" })
+  @Column({ type: "uuid", nullable: false, unique: true })
   productId!: string;
 
   // 총 재고 수량
@@ -53,39 +54,46 @@ export class InventoryEntity {
   quantity!: number;
 
   // 가용 재고 수량 (총 수량 - 예약 수량)
-  @Column({ type: "int", default: 0, name: "available_quantity" })
+  @Column({ type: "int", default: 0 })
   availableQuantity!: number;
 
-  // Note: reserved_quantity and status columns don't exist in the simplified schema
-  // These are calculated values, not stored in database
+  // 예약된 수량 (주문 처리 중인 수량)
+  @Column({ type: "int", default: 0 })
+  reservedQuantity!: number;
+
+  // 재고 상태
+  @Column({
+    type: process.env.NODE_ENV === "test" ? "varchar" : "enum",
+    default: InventoryStatus.SUFFICIENT,
+    // 조건부 속성 스프레드
+    ...(process.env.NODE_ENV === "test"
+      ? { length: 20 }
+      : { enum: InventoryStatus }),
+  })
+  status!: InventoryStatus;
 
   // 재고 부족 임계값
-  @Column({ type: "int", default: 10, name: "low_stock_threshold" })
+  @Column({ type: "int", default: 10 })
   lowStockThreshold!: number;
 
   // 재고 위치 정보 (창고, 매장 등)
   @Column({ type: "varchar", length: 100, default: "MAIN_WAREHOUSE" })
   location!: string;
 
-  // Note: last_updated column doesn't exist in simplified schema
-
   // 최종 재입고 일시
   @Column({
     type: process.env.NODE_ENV === "test" ? "datetime" : "timestamp",
     nullable: true,
-    name: "last_restocked_at",
   })
   lastRestockedAt?: Date;
 
   @CreateDateColumn({
     type: process.env.NODE_ENV === "test" ? "datetime" : "timestamp",
-    name: "created_at",
   })
   createdAt!: Date;
 
   @UpdateDateColumn({
     type: process.env.NODE_ENV === "test" ? "datetime" : "timestamp",
-    name: "updated_at",
   })
   updatedAt!: Date;
 
@@ -94,7 +102,7 @@ export class InventoryEntity {
   // ========================================
 
   @OneToOne(() => ProductEntity, { eager: false })
-  @JoinColumn({ name: "product_id" })
+  @JoinColumn({ name: "productId" })
   product?: ProductEntity;
 
   // ========================================
@@ -122,7 +130,23 @@ export class InventoryEntity {
     entity.productId = inventory.getProductId();
     entity.quantity = inventory.getQuantity();
     entity.availableQuantity = inventory.getAvailableQuantity();
-    // Note: reservedQuantity and status are calculated, not stored
+    entity.reservedQuantity = inventory.getReservedQuantity();
+
+    // enum 값 매핑 (도메인의 string을 Entity enum으로 정확히 변환)
+    const domainStatus = inventory.getStatus();
+    switch (domainStatus) {
+      case "sufficient":
+        entity.status = InventoryStatus.SUFFICIENT;
+        break;
+      case "low_stock":
+        entity.status = InventoryStatus.LOW_STOCK;
+        break;
+      case "out_of_stock":
+        entity.status = InventoryStatus.OUT_OF_STOCK;
+        break;
+      default:
+        entity.status = InventoryStatus.SUFFICIENT;
+    }
 
     entity.lowStockThreshold = inventory.getLowStockThreshold();
     entity.location = inventory.getLocation();
@@ -141,25 +165,25 @@ export class InventoryEntity {
   /**
    * TypeORM Entity를 Domain Inventory 객체로 변환
    */
-  static toDomain(entity: InventoryEntity): import("../../entities/Inventory").Inventory {
+  toDomain(): import("../../entities/Inventory").Inventory {
     // 동적 import를 사용하여 순환 종속성 완전 방지
     const { Inventory } = require("../../entities/Inventory");
 
     // Repository에서는 이미 저장된 데이터를 복원
     const inventoryData: any = {
-      id: entity.id,
-      productId: entity.productId,
-      quantity: entity.quantity,
-      reservedQuantity: 0, // Default value since not stored in DB
-      lowStockThreshold: entity.lowStockThreshold,
-      location: entity.location,
-      createdAt: entity.createdAt,
-      updatedAt: entity.updatedAt,
+      id: this.id,
+      productId: this.productId,
+      quantity: this.quantity,
+      reservedQuantity: this.reservedQuantity,
+      lowStockThreshold: this.lowStockThreshold,
+      location: this.location,
+      createdAt: this.createdAt,
+      updatedAt: this.updatedAt,
     };
 
     // 선택적 속성들 조건부 추가
-    if (entity.lastRestockedAt !== undefined) {
-      inventoryData.lastRestockedAt = entity.lastRestockedAt;
+    if (this.lastRestockedAt !== undefined) {
+      inventoryData.lastRestockedAt = this.lastRestockedAt;
     }
 
     return Inventory.restore(inventoryData);
@@ -192,24 +216,11 @@ export class InventoryEntity {
       productId: this.productId,
       quantity: this.quantity,
       availableQuantity: this.availableQuantity,
-      reservedQuantity: 0, // Default value since not stored in DB
-      status: this.calculateStatus(), // Calculate status based on available quantity
+      reservedQuantity: this.reservedQuantity,
+      status: this.status,
       location: this.location,
       isLowStock: this.isLowStock(),
       isOutOfStock: this.isOutOfStock(),
     };
-  }
-
-  /**
-   * Calculate inventory status based on available quantity
-   */
-  private calculateStatus(): InventoryStatus {
-    if (this.isOutOfStock()) {
-      return InventoryStatus.OUT_OF_STOCK;
-    } else if (this.isLowStock()) {
-      return InventoryStatus.LOW_STOCK;
-    } else {
-      return InventoryStatus.SUFFICIENT;
-    }
   }
 }

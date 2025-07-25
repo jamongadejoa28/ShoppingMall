@@ -21,10 +21,8 @@ export interface GetProductListRequest {
   page?: number;
   limit?: number;
   categoryId?: string;
-  categoryName?: string; // 단일 카테고리 이름으로 검색
-  categoryNames?: string[]; // 다중 카테고리 이름으로 검색
   search?: string;
-  brand?: string | string[];
+  brand?: string;
   minPrice?: number;
   maxPrice?: number;
   sortBy?:
@@ -32,7 +30,6 @@ export interface GetProductListRequest {
     | "price_desc"
     | "name_asc"
     | "name_desc"
-    | "created_asc"
     | "created_desc";
 }
 
@@ -69,7 +66,7 @@ export interface ProductListResponse {
   filters: {
     appliedCategory?: string | undefined;
     appliedSearch?: string | undefined;
-    appliedBrand?: string | string[] | undefined;
+    appliedBrand?: string | undefined;
     appliedPriceRange?:
       | {
           min?: number | undefined;
@@ -83,7 +80,7 @@ export interface ProductListResponse {
 // 내부 필터 인터페이스
 interface SearchFilters {
   categoryId?: string;
-  brand?: string | string[];
+  brand?: string;
   minPrice?: number;
   maxPrice?: number;
   sortBy?: string;
@@ -123,34 +120,25 @@ export class GetProductListUseCase {
 
       // 3. 캐시 확인 시도
       const cacheKey = this.buildCacheKey(normalizedParams);
-      console.log(`[GetProductListUseCase] 캐시 키: ${cacheKey}`);
       try {
         const cachedResult =
           await this.cacheService.get<ProductListResponse>(cacheKey);
         if (cachedResult) {
-          console.log(`[GetProductListUseCase] 캐시 히트: ${cacheKey}`);
           return Result.ok(cachedResult);
-        } else {
-          console.log(`[GetProductListUseCase] 캐시 미스: ${cacheKey}`);
         }
       } catch (cacheError) {
-        console.error(`[GetProductListUseCase] 캐시 오류: ${cacheError}`);
         // 캐시 오류는 무시하고 계속 진행
+        console.warn("캐시 조회 실패:", cacheError);
       }
 
       // 4. 데이터베이스에서 상품 조회 - ✅ undefined 값 필터링
-      const extractedSortBy = this.extractSortField(normalizedParams.sortBy);
-      const extractedSortOrder = this.extractSortOrder(normalizedParams.sortBy);
-      
-      console.log(`[DEBUG] UseCase - Original sortBy: "${normalizedParams.sortBy}"`);
-      console.log(`[DEBUG] UseCase - Extracted sortBy: "${extractedSortBy}"`);
-      console.log(`[DEBUG] UseCase - Extracted sortOrder: "${extractedSortOrder}"`);
-      
       const searchOptions: any = {
         page: normalizedParams.page,
         limit: normalizedParams.limit,
-        sortBy: extractedSortBy,
-        sortOrder: extractedSortOrder as "asc" | "desc",
+        sortBy: normalizedParams.sortBy,
+        sortOrder: this.extractSortOrder(normalizedParams.sortBy) as
+          | "asc"
+          | "desc",
         isActive: true, // 활성 상품만 조회
       };
 
@@ -159,10 +147,6 @@ export class GetProductListUseCase {
         searchOptions.search = normalizedParams.search;
       if (normalizedParams.categoryId)
         searchOptions.categoryId = normalizedParams.categoryId;
-      if (normalizedParams.categoryName)
-        searchOptions.categoryName = normalizedParams.categoryName;
-      if (normalizedParams.categoryNames)
-        searchOptions.categoryNames = normalizedParams.categoryNames;
       if (normalizedParams.brand) searchOptions.brand = normalizedParams.brand;
       if (normalizedParams.minPrice !== undefined)
         searchOptions.minPrice = normalizedParams.minPrice;
@@ -185,26 +169,23 @@ export class GetProductListUseCase {
 
       // 7. 캐시 저장 시도
       try {
-        console.log(`[GetProductListUseCase] 캐시 저장 시도: ${cacheKey}`);
         await this.cacheService.set(cacheKey, response, this.CACHE_TTL);
-        console.log(`[GetProductListUseCase] 캐시 저장 완료: ${cacheKey}`);
       } catch (cacheError) {
-        console.error(`[GetProductListUseCase] 캐시 저장 오류: ${cacheError}`);
         // 캐시 저장 오류는 무시
+        console.warn("캐시 저장 실패:", cacheError);
       }
 
       return Result.ok(response);
     } catch (error) {
       console.error("GetProductListUseCase 실행 오류:", error);
-      
+
       if (error instanceof DomainError) {
         return Result.fail(error);
       }
 
-      const errorMessage = error instanceof Error ? error.message : "알 수 없는 오류";
       return Result.fail(
         new DomainError(
-          `상품 목록 조회 중 오류가 발생했습니다: ${errorMessage}`,
+          "상품 목록 조회 중 오류가 발생했습니다",
           "INTERNAL_ERROR"
         )
       );
@@ -266,40 +247,12 @@ export class GetProductListUseCase {
         Math.max(1, request.limit || this.DEFAULT_LIMIT)
       ),
       categoryId: request.categoryId?.trim() || undefined,
-      categoryName: request.categoryName?.trim() || undefined,
-      categoryNames: request.categoryNames?.map(c => c.trim()).filter(c => c) || undefined,
       search: request.search?.trim() || undefined,
-      brand: this.normalizeBrandParameter(request.brand),
+      brand: request.brand?.trim() || undefined,
       minPrice: request.minPrice || undefined,
       maxPrice: request.maxPrice || undefined,
       sortBy: request.sortBy || "created_desc",
     };
-  }
-
-  /**
-   * 브랜드 파라미터 정규화 - 다중 브랜드 지원
-   */
-  private normalizeBrandParameter(brand?: string | string[]): string[] | undefined {
-    if (!brand) return undefined;
-    
-    if (Array.isArray(brand)) {
-      // 이미 배열인 경우, 빈 값 필터링 후 반환
-      const filteredBrands = brand.filter(b => b && b.trim()).map(b => b.trim());
-      return filteredBrands.length > 0 ? filteredBrands : undefined;
-    }
-    
-    if (typeof brand === 'string') {
-      // 문자열인 경우, 콤마로 분리하여 배열로 변환
-      if (brand.includes(',')) {
-        const brandArray = brand.split(',').filter(b => b && b.trim()).map(b => b.trim());
-        return brandArray.length > 0 ? brandArray : undefined;
-      }
-      // 단일 브랜드인 경우
-      const trimmedBrand = brand.trim();
-      return trimmedBrand ? [trimmedBrand] : undefined;
-    }
-    
-    return undefined;
   }
 
   /**
@@ -315,23 +268,6 @@ export class GetProductListUseCase {
   }
 
   /**
-   * 정렬 필드 추출
-   */
-  private extractSortField(sortBy?: string): string {
-    if (!sortBy) return "createdAt";
-
-    // sortBy에서 _asc, _desc 제거하여 필드명만 추출
-    const field = sortBy.replace(/_asc$|_desc$/, "");
-    
-    // created를 createdAt으로 변환
-    if (field === "created") {
-      return "createdAt";
-    }
-
-    return field;
-  }
-
-  /**
    * 캐시 키 생성
    */
   private buildCacheKey(params: any): string {
@@ -343,8 +279,6 @@ export class GetProductListUseCase {
     ];
 
     if (params.categoryId) keyParts.push(`category:${params.categoryId}`);
-    if (params.categoryName) keyParts.push(`categoryName:${params.categoryName}`);
-    if (params.categoryNames) keyParts.push(`categoryNames:${params.categoryNames.join(',')}`);
     if (params.search) keyParts.push(`search:${params.search}`);
     if (params.brand) keyParts.push(`brand:${params.brand}`);
     if (params.minPrice) keyParts.push(`minPrice:${params.minPrice}`);
@@ -382,65 +316,33 @@ export class GetProductListUseCase {
   > {
     // ✅ 수정: products가 배열인지 확인
     if (!products || !Array.isArray(products)) {
+      console.warn("products가 배열이 아닙니다:", products);
       return [];
     }
-
-    // N+1 쿼리 문제 해결: 배치로 모든 관련 데이터 조회
-    const productIds = products.map(p => p.getId());
-    const categoryIds = [...new Set(products.map(p => p.getCategoryId()))];
-
-
-    // 모든 카테고리와 재고 정보를 한 번에 조회
-    const [categories, inventories] = await Promise.all([
-      Promise.all(categoryIds.map(id => this.categoryRepository.findById(id))),
-      Promise.all(productIds.map(id => this.inventoryRepository.findByProductId(id)))
-    ]);
-
-    // 빠른 조회를 위한 Map 생성
-    const categoryMap = new Map();
-    const inventoryMap = new Map();
-
-    categories.forEach((category: any) => {
-      if (category) {
-        categoryMap.set(category.getId(), category);
-      }
-    });
-
-    inventories.forEach((inventory: any) => {
-      if (inventory) {
-        inventoryMap.set(inventory.getProductId(), inventory);
-      }
-    });
-
 
     const enrichedProducts = [];
 
     for (const product of products) {
       try {
-        // Map에서 빠르게 조회
-        const category = categoryMap.get(product.getCategoryId());
-        const inventory = inventoryMap.get(product.getId());
+        // 카테고리 정보 조회
+        const category = await this.categoryRepository.findById(
+          product.getCategoryId()
+        );
+
+        // 재고 정보 조회
+        const inventory = await this.inventoryRepository.findByProductId(
+          product.getId()
+        );
 
         // ✅ slug 생성 (getSlug 메서드 대신 직접 생성)
         const slug = this.generateSlug(product.getName());
-
-        // 할인 가격 로직
-        const originalPrice = product.getOriginalPrice();
-        const currentPrice = product.getPrice();
-        let finalPrice = currentPrice;
-        let discountPrice = undefined;
-        
-        if (originalPrice !== undefined && originalPrice > currentPrice) {
-          finalPrice = originalPrice; // 원래 가격을 표시
-          discountPrice = currentPrice; // 할인된 가격
-        }
 
         enrichedProducts.push({
           id: product.getId(),
           name: product.getName(),
           description: product.getDescription(),
-          price: finalPrice,
-          discountPrice: discountPrice,
+          price: product.getPrice(),
+          discountPrice: product.getDiscountPrice() || undefined, // ✅ 명시적 undefined
           sku: product.getSku(),
           brand: product.getBrand(),
           tags: product.getTags(),
@@ -454,29 +356,19 @@ export class GetProductListUseCase {
           },
           inventory: {
             availableQuantity: inventory?.getAvailableQuantity() || 0,
-            status: this.determineInventoryStatus(inventory?.getAvailableQuantity() || 0),
+            status: inventory?.getStatus() || "out_of_stock",
           },
           createdAt: product.getCreatedAt(),
         });
       } catch (error) {
         console.error(`상품 ${product.getId()} 정보 보강 실패:`, error);
         // 오류가 발생한 상품도 기본 정보로 포함
-        const originalPrice = product.getOriginalPrice();
-        const currentPrice = product.getPrice();
-        let finalPrice = currentPrice;
-        let discountPrice = undefined;
-        
-        if (originalPrice !== undefined && originalPrice > currentPrice) {
-          finalPrice = originalPrice;
-          discountPrice = currentPrice;
-        }
-        
         enrichedProducts.push({
           id: product.getId(),
           name: product.getName(),
           description: product.getDescription(),
-          price: finalPrice,
-          discountPrice: discountPrice,
+          price: product.getPrice(),
+          discountPrice: product.getDiscountPrice() || undefined,
           sku: product.getSku(),
           brand: product.getBrand(),
           tags: product.getTags(),
@@ -488,7 +380,7 @@ export class GetProductListUseCase {
           },
           inventory: {
             availableQuantity: 0,
-            status: this.determineInventoryStatus(0),
+            status: "out_of_stock",
           },
           createdAt: product.getCreatedAt(),
         });
@@ -512,20 +404,6 @@ export class GetProductListUseCase {
   }
 
   /**
-   * 재고 수량에 따른 상태 결정
-   * 요구사항: 1-20: 거의 품절, 0: 품절, >20: 재고 충분
-   */
-  private determineInventoryStatus(availableQuantity: number): string {
-    if (availableQuantity === 0) {
-      return "out_of_stock"; // 품절
-    } else if (availableQuantity <= 20) {
-      return "low_stock"; // 거의 품절
-    } else {
-      return "sufficient"; // 재고 충분
-    }
-  }
-
-  /**
    * 최종 응답 데이터 구성
    * ✅ exactOptionalPropertyTypes 대응
    */
@@ -544,11 +422,7 @@ export class GetProductListUseCase {
     if (originalRequest.categoryId)
       filters.appliedCategory = originalRequest.categoryId;
     if (originalRequest.search) filters.appliedSearch = originalRequest.search;
-    if (normalizedParams.brand && normalizedParams.brand.length > 0) {
-      filters.appliedBrand = normalizedParams.brand.length === 1 
-        ? normalizedParams.brand[0] 
-        : normalizedParams.brand;
-    }
+    if (originalRequest.brand) filters.appliedBrand = originalRequest.brand;
     if (originalRequest.sortBy) filters.appliedSortBy = originalRequest.sortBy;
 
     if (

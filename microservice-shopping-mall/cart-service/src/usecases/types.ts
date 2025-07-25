@@ -18,7 +18,6 @@ export interface CartRepository {
   delete(id: string): Promise<void>;
   deleteByUserId(userId: string): Promise<void>;
   deleteBySessionId(sessionId: string): Promise<void>;
-  deleteCart(cartId: string): Promise<void>; // 새로 추가: cart와 관련된 모든 데이터 삭제
 }
 
 // ========================================
@@ -104,7 +103,7 @@ export interface UpdateCartItemRequest {
 
 export interface UpdateCartItemResponse {
   success: boolean;
-  cart: Cart | null;
+  cart: Cart;
   message?: string;
 }
 
@@ -117,7 +116,7 @@ export interface RemoveFromCartRequest {
 
 export interface RemoveFromCartResponse {
   success: boolean;
-  cart: Cart | null;
+  cart: Cart;
   message?: string;
 }
 
@@ -141,7 +140,7 @@ export interface ClearCartRequest {
 
 export interface ClearCartResponse {
   success: boolean;
-  cart: Cart | null; // 🔧 수정: 삭제된 장바구니는 null 반환
+  cart: Cart; // 🔧 추가: 비워진 장바구니 객체 반환
   message?: string;
 }
 
@@ -168,24 +167,6 @@ export interface ProductInfo {
   sku?: string;
   slug?: string;
   imageUrls?: string[];
-  // 클라이언트 호환성을 위한 추가 필드들
-  image_urls?: string[];
-  original_price?: number;
-  rating?: number;
-  review_count?: number;
-  is_featured?: boolean;
-  min_order_quantity?: number;
-  max_order_quantity?: number;
-  tags?: string[];
-  weight?: number;
-  dimensions?: {
-    width: number;
-    height: number;
-    depth: number;
-  };
-  thumbnail_url?: string;
-  created_at?: string;
-  updated_at?: string;
 }
 
 export interface InventoryCheckResult {
@@ -279,17 +260,3 @@ export type CartSummary = {
   createdAt: Date;
   updatedAt: Date;
 };
-
-// ========================================
-// Delete Cart Types
-// ========================================
-
-export interface DeleteCartRequest {
-  userId?: string;
-  sessionId?: string;
-}
-
-export interface DeleteCartResponse {
-  success: boolean;
-  message: string;
-}

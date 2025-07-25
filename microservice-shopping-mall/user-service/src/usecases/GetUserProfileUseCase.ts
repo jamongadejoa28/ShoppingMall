@@ -47,12 +47,19 @@ export class GetUserProfileUseCase
         name: user.name,
         email: user.email,
         role: user.role,
+        isEmailVerified: user.isEmailVerified,
         isActive: user.isActive,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       };
 
       // 조건부 프로퍼티 할당 (undefined가 아닌 경우에만)
+      if (user.phone !== undefined) {
+        userData.phone = user.phone;
+      }
+      if (user.address !== undefined) {
+        userData.address = user.address;
+      }
       if (user.lastLoginAt !== undefined) {
         userData.lastLoginAt = user.lastLoginAt;
       }

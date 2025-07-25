@@ -9,14 +9,8 @@ import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import toast from 'react-hot-toast';
-import { useAuthStore } from '../../state/authStore';
-import { RegisterData } from '../../../shared/types/user';
+import { useAuthStore, type RegisterData } from '../../state/authStore';
 import { ROUTES } from '../../../shared/constants/routes';
-import PhoneVerification, {
-  VerificationResult,
-} from '../components/PhoneVerification';
-import { AddressData } from '../components/AddressSearch';
-import AddressModal from '../components/AddressModal';
 
 // ========================================
 // 타입 정의
@@ -27,12 +21,8 @@ interface RegisterFormData {
   email: string;
   password: string;
   confirmPassword: string;
-  phoneNumber: string;
-  postalCode: string;
-  address: string;
-  detailAddress?: string;
+  role: 'customer' | 'admin';
   agreeToTerms: boolean;
-  isPhoneVerified: boolean;
 }
 
 // ========================================
@@ -64,32 +54,13 @@ const registerSchema = yup.object({
     .string()
     .required('비밀번호 확인을 입력해주세요')
     .oneOf([yup.ref('password')], '비밀번호가 일치하지 않습니다'),
-  phoneNumber: yup
+  role: yup
     .string()
-    .required('휴대폰 번호를 입력해주세요')
-    .matches(
-      /^010\d{8}$/,
-      '휴대폰 번호 형식이 올바르지 않습니다 (010으로 시작하는 11자리 숫자)'
-    ),
+    .oneOf(['customer', 'admin'], '올바른 역할을 선택해주세요')
+    .default('customer'),
   agreeToTerms: yup
     .boolean()
     .oneOf([true], '이용약관에 동의해주세요')
-    .required(),
-  postalCode: yup
-    .string()
-    .required('우편번호를 입력해주세요')
-    .matches(/^\d{5}$/, '우편번호는 5자리 숫자여야 합니다'),
-  address: yup
-    .string()
-    .required('주소를 입력해주세요')
-    .max(255, '주소는 최대 255자까지 입력 가능합니다'),
-  detailAddress: yup
-    .string()
-    .optional()
-    .max(255, '상세주소는 최대 255자까지 입력 가능합니다'),
-  isPhoneVerified: yup
-    .boolean()
-    .oneOf([true], '휴대폰 본인인증을 완료해주세요')
     .required(),
 });
 
@@ -102,7 +73,6 @@ const RegisterPage: React.FC = () => {
   const { register: registerUser, isLoading } = useAuthStore();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
 
   const {
     register,
@@ -110,20 +80,15 @@ const RegisterPage: React.FC = () => {
     formState: { errors, isSubmitting },
     setError,
     watch,
-    setValue,
   } = useForm<RegisterFormData>({
-    resolver: yupResolver(registerSchema) as any,
+    resolver: yupResolver(registerSchema),
     defaultValues: {
       name: '',
       email: '',
       password: '',
       confirmPassword: '',
-      phoneNumber: '',
-      postalCode: '',
-      address: '',
-      detailAddress: '',
+      role: 'customer',
       agreeToTerms: false,
-      isPhoneVerified: false,
     },
   });
 
@@ -140,16 +105,8 @@ const RegisterPage: React.FC = () => {
         name: data.name,
         email: data.email,
         password: data.password,
-        phoneNumber: data.phoneNumber,
-        postalCode: data.postalCode,
-        address: data.address,
-        role: 'customer', // 모든 사용자를 일반 회원으로 설정
+        role: data.role,
       };
-
-      // detailAddress가 있을 때만 추가
-      if (data.detailAddress?.trim()) {
-        registerData.detailAddress = data.detailAddress.trim();
-      }
 
       const result = await registerUser(registerData);
 
@@ -157,6 +114,12 @@ const RegisterPage: React.FC = () => {
         toast.success('회원가입이 완료되었습니다!', {
           duration: 4000,
           icon: '🎉',
+        });
+
+        // 이메일 인증 안내 메시지
+        toast('이메일을 확인하여 계정을 인증해주세요.', {
+          duration: 6000,
+          icon: '📧',
         });
 
         // 로그인 페이지로 이동
@@ -192,39 +155,6 @@ const RegisterPage: React.FC = () => {
     setShowConfirmPassword(!showConfirmPassword);
   };
 
-  const handlePhoneVerification = (result: VerificationResult) => {
-    setValue('isPhoneVerified', result.isVerified);
-    if (result.isVerified && result.phoneNumber) {
-      setValue('phoneNumber', result.phoneNumber.replace(/[-\s]/g, ''));
-      toast.success('휴대폰 본인인증이 완료되었습니다!', {
-        duration: 3000,
-        icon: '✅',
-      });
-    }
-  };
-
-  const handlePhoneVerificationFailed = (error: string) => {
-    setValue('isPhoneVerified', false);
-    toast.error(error, {
-      duration: 4000,
-      icon: '❌',
-    });
-  };
-
-  const handleAddressSelect = (addressData: AddressData) => {
-    setValue('postalCode', addressData.zonecode);
-    setValue('address', addressData.address);
-    setIsAddressModalOpen(false);
-  };
-
-  const openAddressModal = () => {
-    setIsAddressModalOpen(true);
-  };
-
-  const closeAddressModal = () => {
-    setIsAddressModalOpen(false);
-  };
-
   // ========================================
   // 렌더링
   // ========================================
@@ -253,7 +183,7 @@ const RegisterPage: React.FC = () => {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
-          <form className="space-y-6" onSubmit={handleSubmit(onSubmit as any)}>
+          <form className="space-y-6" onSubmit={handleSubmit(onSubmit)}>
             {/* 이름 입력 */}
             <div>
               <label
@@ -376,10 +306,6 @@ const RegisterPage: React.FC = () => {
                     {errors.password.message}
                   </p>
                 )}
-                {/* 비밀번호 요구사항 한 줄 표시 */}
-                <p className="mt-1 text-xs text-gray-500">
-                  8자 이상, 대문자·소문자·숫자·특수문자 포함
-                </p>
               </div>
             </div>
 
@@ -449,187 +375,26 @@ const RegisterPage: React.FC = () => {
                     {errors.confirmPassword.message}
                   </p>
                 )}
-                {/* 비밀번호 확인 일치 여부 표시 */}
-                {watch('confirmPassword') && (
-                  <div className="mt-2">
-                    {watch('confirmPassword') === password ? (
-                      <div className="flex items-center text-sm text-green-600">
-                        <svg
-                          className="w-4 h-4 mr-2 flex-shrink-0"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                        <span className="font-medium">
-                          비밀번호가 일치합니다
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center text-sm text-red-600">
-                        <svg
-                          className="w-4 h-4 mr-2 flex-shrink-0"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                        <span className="font-medium">
-                          비밀번호가 일치하지 않습니다
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             </div>
 
-            {/* 휴대폰 번호 입력 */}
+            {/* 역할 선택 */}
             <div>
               <label
-                htmlFor="phoneNumber"
+                htmlFor="role"
                 className="block text-sm font-medium text-gray-700"
               >
-                휴대폰 번호
+                회원 유형
               </label>
               <div className="mt-1">
-                <input
-                  {...register('phoneNumber')}
-                  type="tel"
-                  autoComplete="tel"
-                  className={`appearance-none block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${
-                    errors.phoneNumber
-                      ? 'border-red-300 text-red-900 placeholder-red-300'
-                      : 'border-gray-300'
-                  }`}
-                  placeholder="01012345678"
-                  onChange={e => {
-                    // 숫자만 입력되도록 처리
-                    const value = e.target.value.replace(/[^0-9]/g, '');
-                    if (value.length <= 11) {
-                      e.target.value = value;
-                      // react-hook-form에 값 업데이트
-                      setValue('phoneNumber', value);
-                    }
-                  }}
-                />
-                {errors.phoneNumber && (
-                  <p className="mt-2 text-sm text-red-600">
-                    {errors.phoneNumber.message}
-                  </p>
-                )}
-                {errors.isPhoneVerified && (
-                  <p className="mt-2 text-sm text-red-600">
-                    {errors.isPhoneVerified.message}
-                  </p>
-                )}
-
-                {/* 휴대폰 번호 형식 안내 */}
-                <p className="mt-1 text-xs text-gray-500">
-                  010으로 시작하는 11자리 숫자를 입력해주세요
-                </p>
+                <select
+                  {...register('role')}
+                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                >
+                  <option value="customer">일반 회원</option>
+                  <option value="admin">관리자</option>
+                </select>
               </div>
-
-              {/* PASS 본인인증 컴포넌트 */}
-              <div className="mt-3">
-                <PhoneVerification
-                  phoneNumber={watch('phoneNumber') || ''}
-                  onVerificationComplete={handlePhoneVerification}
-                  onVerificationFailed={handlePhoneVerificationFailed}
-                  disabled={
-                    !watch('phoneNumber') ||
-                    !/^010\d{8}$/.test(watch('phoneNumber'))
-                  }
-                />
-              </div>
-            </div>
-
-            {/* 주소 입력 */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-4">
-                주소
-              </label>
-
-              {/* 우편번호 */}
-              <div className="mb-3">
-                <div className="flex gap-2">
-                  <input
-                    {...register('postalCode')}
-                    type="text"
-                    placeholder="우편번호"
-                    readOnly
-                    className={`flex-1 px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-gray-50 ${
-                      errors.postalCode
-                        ? 'border-red-300 text-red-900'
-                        : 'border-gray-300'
-                    }`}
-                  />
-                  <button
-                    type="button"
-                    onClick={openAddressModal}
-                    className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
-                  >
-                    우편번호 검색
-                  </button>
-                </div>
-                {errors.postalCode && (
-                  <p className="mt-2 text-sm text-red-600">
-                    {errors.postalCode.message}
-                  </p>
-                )}
-              </div>
-
-              {/* 기본주소 */}
-              <div className="mb-3">
-                <input
-                  {...register('address')}
-                  type="text"
-                  placeholder="기본주소"
-                  readOnly
-                  className={`appearance-none block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-gray-50 ${
-                    errors.address
-                      ? 'border-red-300 text-red-900'
-                      : 'border-gray-300'
-                  }`}
-                />
-                {errors.address && (
-                  <p className="mt-2 text-sm text-red-600">
-                    {errors.address.message}
-                  </p>
-                )}
-              </div>
-
-              {/* 상세주소 */}
-              <div className="mb-3">
-                <input
-                  {...register('detailAddress')}
-                  type="text"
-                  placeholder="상세주소 (동/호수 등)"
-                  className={`appearance-none block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${
-                    errors.detailAddress
-                      ? 'border-red-300 text-red-900 placeholder-red-300'
-                      : 'border-gray-300'
-                  }`}
-                />
-                {errors.detailAddress && (
-                  <p className="mt-2 text-sm text-red-600">
-                    {errors.detailAddress.message}
-                  </p>
-                )}
-              </div>
-
-              {/* 주소 안내 */}
-              <p className="text-xs text-gray-500">
-                우편번호 검색 버튼을 클릭하여 주소를 선택해주세요
-              </p>
             </div>
 
             {/* 이용약관 동의 */}
@@ -697,15 +462,36 @@ const RegisterPage: React.FC = () => {
               </button>
             </div>
           </form>
+
+          {/* 비밀번호 강도 안내 */}
+          {password && (
+            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-md">
+              <h4 className="text-sm font-medium text-blue-900 mb-2">
+                비밀번호 요구사항
+              </h4>
+              <ul className="text-xs text-blue-700 space-y-1">
+                <li className={password.length >= 8 ? 'text-green-600' : ''}>
+                  • 최소 8자 이상
+                </li>
+                <li className={/[A-Z]/.test(password) ? 'text-green-600' : ''}>
+                  • 대문자 포함
+                </li>
+                <li className={/[a-z]/.test(password) ? 'text-green-600' : ''}>
+                  • 소문자 포함
+                </li>
+                <li className={/\d/.test(password) ? 'text-green-600' : ''}>
+                  • 숫자 포함
+                </li>
+                <li
+                  className={/[@$!%*?&]/.test(password) ? 'text-green-600' : ''}
+                >
+                  • 특수문자 포함
+                </li>
+              </ul>
+            </div>
+          )}
         </div>
       </div>
-
-      {/* 주소 검색 모달 */}
-      <AddressModal
-        isOpen={isAddressModalOpen}
-        onClose={closeAddressModal}
-        onAddressSelect={handleAddressSelect}
-      />
     </div>
   );
 };

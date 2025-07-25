@@ -54,13 +54,13 @@ export class JwtTokenService implements TokenService {
         email: payload.email,
         role: payload.role,
         type: 'access',
+        iss: this.issuer,
         iat: Math.floor(Date.now() / 1000),
       };
 
       // TypeScript 5.8.3 호환성을 위한 타입 안전한 처리
       const signOptions: jwt.SignOptions = {
         algorithm: 'HS256', // 명시적 알고리즘 지정 (보안)
-        issuer: this.issuer, // JWT 표준 클레임으로 issuer 설정
       };
 
       // expiresIn 타입 안전 처리 (jsonwebtoken StringValue 호환)
@@ -85,13 +85,13 @@ export class JwtTokenService implements TokenService {
         sub: payload.id,
         email: payload.email,
         type: 'refresh',
+        iss: this.issuer,
         iat: Math.floor(Date.now() / 1000),
       };
 
       // TypeScript 5.8.3 호환성을 위한 타입 안전한 처리
       const signOptions: jwt.SignOptions = {
         algorithm: 'HS256',
-        issuer: this.issuer, // JWT 표준 클레임으로 issuer 설정
       };
 
       // expiresIn 타입 안전 처리 (jsonwebtoken StringValue 호환)

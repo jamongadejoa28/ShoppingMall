@@ -11,12 +11,9 @@ import { DataSource } from 'typeorm';
 // ===== Use Cases (Application Layer) =====
 import { RegisterUserUseCase } from '../usecases/RegisterUserUseCase';
 import { LoginUserUseCase } from '../usecases/LoginUserUseCase';
-import { RefreshTokenUseCase } from '../usecases/RefreshTokenUseCase';
 import { GetUserProfileUseCase } from '../usecases/GetUserProfileUseCase';
 import { UpdateUserProfileUseCase } from '../usecases/UpdateUserProfileUseCase';
 import { DeactivateUserUseCase } from '../usecases/DeactivateUserUseCase';
-import { GetUsersUseCase } from '../usecases/GetUsersUseCase';
-import { GetUserStatsUseCase } from '../usecases/GetUserStatsUseCase';
 
 // ===== Adapters (Infrastructure Layer) =====
 import { PostgreSQLUserRepository } from '../adapters/PostgreSQLUserRepository';
@@ -57,12 +54,9 @@ export class DependencyContainer {
   // ===== Application (Use Case Layer) =====
   private _registerUserUseCase!: RegisterUserUseCase;
   private _loginUserUseCase!: LoginUserUseCase;
-  private _refreshTokenUseCase!: RefreshTokenUseCase;
   private _getUserProfileUseCase!: GetUserProfileUseCase;
   private _updateUserProfileUseCase!: UpdateUserProfileUseCase;
   private _deactivateUserUseCase!: DeactivateUserUseCase;
-  private _getUsersUseCase!: GetUsersUseCase;
-  private _getUserStatsUseCase!: GetUserStatsUseCase;
 
   // ===== Presentation (Framework Layer) =====
   private _userController!: UserController;
@@ -106,12 +100,6 @@ export class DependencyContainer {
       this._tokenService
     );
 
-    // 토큰 갱신 Use Case
-    this._refreshTokenUseCase = new RefreshTokenUseCase(
-      this._userRepository,
-      this._tokenService
-    );
-
     // 사용자 프로필 조회 Use Case
     this._getUserProfileUseCase = new GetUserProfileUseCase(
       this._userRepository
@@ -127,16 +115,6 @@ export class DependencyContainer {
       this._userRepository
     );
 
-    // 사용자 목록 조회 Use Case (관리자 전용)
-    this._getUsersUseCase = new GetUsersUseCase(
-      this._userRepository
-    );
-
-    // 사용자 통계 조회 Use Case (관리자 전용)
-    this._getUserStatsUseCase = new GetUserStatsUseCase(
-      this._userRepository
-    );
-
     console.log('✅ Application Layer 초기화 완료');
   }
 
@@ -148,12 +126,9 @@ export class DependencyContainer {
     this._userController = new UserController(
       this._registerUserUseCase,
       this._loginUserUseCase,
-      this._refreshTokenUseCase,
       this._getUserProfileUseCase,
       this._updateUserProfileUseCase,
-      this._deactivateUserUseCase,
-      this._getUsersUseCase,
-      this._getUserStatsUseCase
+      this._deactivateUserUseCase
     );
 
     console.log('✅ Presentation Layer 초기화 완료');
@@ -192,10 +167,6 @@ export class DependencyContainer {
     return this._loginUserUseCase;
   }
 
-  get refreshTokenUseCase(): RefreshTokenUseCase {
-    return this._refreshTokenUseCase;
-  }
-
   get getUserProfileUseCase(): GetUserProfileUseCase {
     return this._getUserProfileUseCase;
   }
@@ -206,14 +177,6 @@ export class DependencyContainer {
 
   get deactivateUserUseCase(): DeactivateUserUseCase {
     return this._deactivateUserUseCase;
-  }
-
-  get getUsersUseCase(): GetUsersUseCase {
-    return this._getUsersUseCase;
-  }
-
-  get getUserStatsUseCase(): GetUserStatsUseCase {
-    return this._getUserStatsUseCase;
   }
 
   // ========================================

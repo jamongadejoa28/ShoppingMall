@@ -53,7 +53,7 @@ export class InventoryRepositoryImpl implements InventoryRepository {
       const savedEntity = await this.repository.save(entity);
 
       // Entity → Domain 변환 후 반환
-      return InventoryEntity.toDomain(savedEntity);
+      return savedEntity.toDomain();
     } catch (error) {
       this.handleDatabaseError(error, "save");
       throw error;
@@ -73,7 +73,7 @@ export class InventoryRepositoryImpl implements InventoryRepository {
         where: { id },
       });
 
-      return entity ? InventoryEntity.toDomain(entity) : null;
+      return entity ? entity.toDomain() : null;
     } catch (error) {
       this.handleDatabaseError(error, "findById");
       throw error;
@@ -93,7 +93,7 @@ export class InventoryRepositoryImpl implements InventoryRepository {
         where: { productId },
       });
 
-      return entity ? InventoryEntity.toDomain(entity) : null;
+      return entity ? entity.toDomain() : null;
     } catch (error) {
       this.handleDatabaseError(error, "findByProductId");
       throw error;
@@ -150,7 +150,7 @@ export class InventoryRepositoryImpl implements InventoryRepository {
         .setLock("pessimistic_write") // Row-level lock
         .getOne();
 
-      return entity ? InventoryEntity.toDomain(entity) : null;
+      return entity ? entity.toDomain() : null;
     } catch (error) {
       this.handleDatabaseError(error, "findByProductIdWithLock");
       throw error;
@@ -172,7 +172,7 @@ export class InventoryRepositoryImpl implements InventoryRepository {
 
       const savedEntity = await repository.save(entity);
 
-      return InventoryEntity.toDomain(savedEntity);
+      return savedEntity.toDomain();
     } catch (error) {
       this.handleDatabaseError(error, "saveInTransaction");
       throw error;
@@ -218,7 +218,7 @@ export class InventoryRepositoryImpl implements InventoryRepository {
       const [entities, total] = await queryBuilder.getManyAndCount();
 
       // Domain 객체로 변환
-      const inventories = entities.map((entity) => InventoryEntity.toDomain(entity));
+      const inventories = entities.map((entity) => entity.toDomain());
 
       return { inventories, total };
     } catch (error) {
@@ -254,7 +254,7 @@ export class InventoryRepositoryImpl implements InventoryRepository {
 
       const entities = await queryBuilder.getMany();
 
-      return entities.map((entity) => InventoryEntity.toDomain(entity));
+      return entities.map((entity) => entity.toDomain());
     } catch (error) {
       this.handleDatabaseError(error, "findLowStock");
       throw error;
@@ -286,7 +286,7 @@ export class InventoryRepositoryImpl implements InventoryRepository {
 
       const entities = await queryBuilder.getMany();
 
-      return entities.map((entity) => InventoryEntity.toDomain(entity));
+      return entities.map((entity) => entity.toDomain());
     } catch (error) {
       this.handleDatabaseError(error, "findLowStockItems");
       throw error;
@@ -313,7 +313,7 @@ export class InventoryRepositoryImpl implements InventoryRepository {
 
       const entities = await queryBuilder.getMany();
 
-      return entities.map((entity) => InventoryEntity.toDomain(entity));
+      return entities.map((entity) => entity.toDomain());
     } catch (error) {
       this.handleDatabaseError(error, "findOutOfStockItems");
       throw error;
@@ -328,11 +328,12 @@ export class InventoryRepositoryImpl implements InventoryRepository {
       const entities = await this.repository.find({
         where: { location },
         order: {
+          status: "ASC", // 품절 → 부족 → 충분 순
           availableQuantity: "ASC",
         },
       });
 
-      return entities.map((entity) => InventoryEntity.toDomain(entity));
+      return entities.map((entity) => entity.toDomain());
     } catch (error) {
       this.handleDatabaseError(error, "findByLocation");
       throw error;
@@ -488,11 +489,19 @@ export class InventoryRepositoryImpl implements InventoryRepository {
   // ========================================
 
   /**
-   * 재고 상태 자동 업데이트 (단순화됨)
+   * 재고 상태 자동 업데이트
    */
   private updateInventoryStatus(entity: InventoryEntity): void {
-    // 단순화된 스키마에서는 availableQuantity가 직접 저장됨
-    // status와 reservedQuantity는 계산된 값으로만 사용
+    const availableQuantity = entity.quantity - entity.reservedQuantity;
+    entity.availableQuantity = availableQuantity;
+
+    if (availableQuantity <= 0) {
+      entity.status = InventoryStatus.OUT_OF_STOCK;
+    } else if (availableQuantity <= entity.lowStockThreshold) {
+      entity.status = InventoryStatus.LOW_STOCK;
+    } else {
+      entity.status = InventoryStatus.SUFFICIENT;
+    }
   }
 
   /**

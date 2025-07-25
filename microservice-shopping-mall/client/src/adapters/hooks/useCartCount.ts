@@ -1,30 +1,44 @@
-// useCartCount.ts - localStorage 기반 장바구니 아이템 개수 추적 커스텀 훅
+// useCartCount.ts - 장바구니 아이템 개수를 실시간으로 추적하는 커스텀 훅
 // Clean Architecture: Adapters Layer
 // 위치: client/src/adapters/hooks/useCartCount.ts
 
-import {
-  useCartItemCount,
-  useCartLoading,
-} from '../../frameworks/state/cartStoreLocal';
+import { useState, useEffect, useCallback } from 'react';
+import { CartApiAdapter } from '../api/CartApiAdapter';
 
 /**
- * 장바구니 상품목록 개수를 실시간으로 추적하는 커스텀 훅
- * localStorage 기반으로 서로 다른 상품의 개수를 반환합니다
+ * 장바구니 아이템 개수를 실시간으로 추적하는 커스텀 훅
  *
- * 예: 사과 3개 + 바나나 2개 = 카운트 2 (상품목록 개수)
- *
- * @returns {Object} - cart count와 loading 상태
+ * @returns {Object} - cart count와 refresh 함수
  */
 export const useCartCount = () => {
-  const count = useCartItemCount();
-  const loading = useCartLoading();
+  const [count, setCount] = useState<number>(0);
+  const [loading, setLoading] = useState<boolean>(true);
+
+  const cartApi = new CartApiAdapter();
+
+  const fetchCartCount = useCallback(async () => {
+    try {
+      const cart = await cartApi.getCart();
+      setCount(cart.totalQuantity || 0);
+    } catch (error) {
+      // 장바구니가 비어있거나 오류 발생 시 0으로 설정
+      setCount(0);
+    } finally {
+      setLoading(false);
+    }
+  }, [cartApi]);
+
+  const refresh = useCallback(() => {
+    fetchCartCount();
+  }, [fetchCartCount]);
+
+  useEffect(() => {
+    fetchCartCount();
+  }, [fetchCartCount]);
 
   return {
     count,
     loading,
-    refresh: () => {
-      // localStorage 기반에서는 실시간으로 업데이트되므로 refresh 불필요
-      // 호환성을 위해 빈 함수 제공
-    },
+    refresh,
   };
 };

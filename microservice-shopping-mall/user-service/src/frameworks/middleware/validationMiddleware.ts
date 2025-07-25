@@ -22,7 +22,7 @@ export function handleValidationErrors() {
     const errors = validationResult(req);
 
     if (!errors.isEmpty()) {
-      const formattedErrors = errors.array().map((error: any) => ({
+      const formattedErrors = errors.array().map(error => ({
         field: error.type === 'field' ? (error as any).path : 'unknown',
         message: error.msg,
         value: error.type === 'field' ? (error as any).value : undefined,
@@ -120,7 +120,7 @@ export const validateUserProfileUpdate = (): ValidationChain[] => [
     .withMessage('이름은 한글, 영문, 공백만 사용할 수 있습니다'),
 
   // 전화번호 검증 (선택적)
-  body('phoneNumber')
+  body('phone')
     .optional()
     .trim()
     .matches(/^[0-9-+\s()]+$/)
@@ -136,9 +136,9 @@ export const validateUserProfileUpdate = (): ValidationChain[] => [
     .withMessage('주소는 500자를 초과할 수 없습니다'),
 
   // 최소 하나의 필드는 있어야 함
-  body().custom((value: any, { req }: any) => {
-    const { name, phoneNumber, address } = req.body;
-    if (!name && !phoneNumber && !address) {
+  body().custom((value, { req }) => {
+    const { name, phone, address } = req.body;
+    if (!name && !phone && !address) {
       throw new Error('업데이트할 정보를 하나 이상 입력해주세요');
     }
     return true;
@@ -180,7 +180,7 @@ export const validatePasswordChange = (): ValidationChain[] => [
   body('confirmPassword')
     .notEmpty()
     .withMessage('비밀번호 확인은 필수 항목입니다')
-    .custom((value: any, { req }: any) => {
+    .custom((value, { req }) => {
       if (value !== req.body.newPassword) {
         throw new Error('새 비밀번호와 비밀번호 확인이 일치하지 않습니다');
       }
@@ -188,7 +188,7 @@ export const validatePasswordChange = (): ValidationChain[] => [
     }),
 
   // 현재 비밀번호와 새 비밀번호가 다른지 확인
-  body('newPassword').custom((value: any, { req }: any) => {
+  body('newPassword').custom((value, { req }) => {
     if (value === req.body.currentPassword) {
       throw new Error('새 비밀번호는 현재 비밀번호와 달라야 합니다');
     }
@@ -243,7 +243,7 @@ export const validatePasswordReset = (): ValidationChain[] => [
   body('confirmPassword')
     .notEmpty()
     .withMessage('비밀번호 확인은 필수 항목입니다')
-    .custom((value: any, { req }: any) => {
+    .custom((value, { req }) => {
       if (value !== req.body.newPassword) {
         throw new Error('새 비밀번호와 비밀번호 확인이 일치하지 않습니다');
       }
@@ -263,7 +263,7 @@ export function createCustomValidation(
   validator: (value: any, req: Request) => boolean | Promise<boolean>,
   message: string
 ): ValidationChain {
-  return body(field).custom(async (value: any, { req }: any) => {
+  return body(field).custom(async (value, { req }) => {
     const isValid = await validator(value, req as Request);
     if (!isValid) {
       throw new Error(message);
@@ -279,7 +279,7 @@ export function conditionalValidation(
   condition: (req: Request) => boolean,
   validationChain: ValidationChain
 ): ValidationChain {
-  return validationChain.if((value: any, { req }: any) => condition(req as Request));
+  return validationChain.if((value, { req }) => condition(req as Request));
 }
 
 // ========================================

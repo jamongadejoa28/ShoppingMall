@@ -75,7 +75,7 @@ export class AddToCartUseCase {
         await this.cacheService.set(
           `session:${request.sessionId}`,
           savedCart.getId(),
-          1800 // 30분 (1800초)
+          300
         );
       }
 

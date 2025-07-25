@@ -7,19 +7,14 @@ export interface CreateUserData {
   email: string;
   password: string;
   role?: 'customer' | 'admin';
-  phoneNumber?: string;
-  postalCode?: string;
-  address?: string;
-  detailAddress?: string;
+  phone?: string;
 }
 
 // 프로필 업데이트용 타입
 export interface UpdateProfileData {
   name?: string;
-  phoneNumber?: string;
-  postalCode?: string;
+  phone?: string;
   address?: string;
-  detailAddress?: string;
 }
 
 // User Entity - Clean Architecture의 Entity 계층
@@ -29,11 +24,11 @@ export class User {
   public email: string;
   public password: string;
   public role: 'customer' | 'admin';
-  public phoneNumber?: string;
-  public isActive: boolean;
-  public postalCode?: string;
+  public phone?: string;
   public address?: string;
-  public detailAddress?: string;
+  public isEmailVerified: boolean;
+  public emailVerifiedAt?: Date;
+  public isActive: boolean;
   public deactivatedAt: Date | null;
   public lastLoginAt?: Date;
   public refreshToken?: string;
@@ -50,24 +45,13 @@ export class User {
     this.password = this.hashPassword(data.password);
     this.role = data.role || 'customer';
     
-    // 옵셔널 필드들
-    if (data.phoneNumber) {
-      this.phoneNumber = data.phoneNumber.trim();
-    }
-    
-    if (data.postalCode) {
-      this.postalCode = data.postalCode.trim();
-    }
-    
-    if (data.address) {
-      this.address = data.address.trim();
-    }
-    
-    if (data.detailAddress) {
-      this.detailAddress = data.detailAddress.trim();
+    // optional 속성들 - 조건부 할당
+    if (data.phone) {
+      this.phone = data.phone;
     }
     
     // 기본 상태 설정
+    this.isEmailVerified = false;
     this.isActive = true;
     this.deactivatedAt = null;
     
@@ -125,6 +109,12 @@ export class User {
     return bcrypt.compare(plainPassword, this.password);
   }
 
+  // 이메일 인증 완료
+  public verifyEmail(): void {
+    this.isEmailVerified = true;
+    this.emailVerifiedAt = new Date();
+    this.updatedAt = new Date();
+  }
 
   // 사용자 비활성화
   public deactivate(): void {
@@ -155,20 +145,12 @@ export class User {
       this.name = updateData.name.trim();
     }
 
-    if (updateData.phoneNumber) {
-      this.phoneNumber = updateData.phoneNumber.trim();
-    }
-
-    if (updateData.postalCode) {
-      this.postalCode = updateData.postalCode.trim();
+    if (updateData.phone) {
+      this.phone = updateData.phone.trim();
     }
 
     if (updateData.address) {
       this.address = updateData.address.trim();
-    }
-
-    if (updateData.detailAddress) {
-      this.detailAddress = updateData.detailAddress.trim();
     }
 
     this.updatedAt = new Date();
@@ -189,7 +171,7 @@ export class User {
 
   // 사용자가 활성 상태인지 확인
   public isActiveUser(): boolean {
-    return this.isActive;
+    return this.isActive && this.isEmailVerified;
   }
 
   // 관리자 권한인지 확인

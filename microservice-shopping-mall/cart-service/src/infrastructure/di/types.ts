@@ -30,8 +30,6 @@ export const TYPES = {
   UpdateCartItemUseCase: Symbol.for("UpdateCartItemUseCase"),
   TransferCartUseCase: Symbol.for("TransferCartUseCase"),
   ClearCartUseCase: Symbol.for("ClearCartUseCase"),
-  DeleteCartUseCase: Symbol.for("DeleteCartUseCase"),
-  CleanupSessionCartUseCase: Symbol.for("CleanupSessionCartUseCase"),
 
   // ========================================
   // Controllers

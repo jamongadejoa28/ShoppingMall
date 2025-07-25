@@ -1,13 +1,9 @@
 // api-gateway/src/server.ts
 
 import app from './app';
+import { createLogger } from '@shopping-mall/shared';
 
-const logger = {
-  info: (message: string, ...args: any[]) => console.log(`[INFO] ${message}`, ...args),
-  error: (message: string, ...args: any[]) => console.error(`[ERROR] ${message}`, ...args),
-  warn: (message: string, ...args: any[]) => console.warn(`[WARN] ${message}`, ...args),
-  debug: (message: string, ...args: any[]) => console.debug(`[DEBUG] ${message}`, ...args),
-};
+const logger = createLogger('api-gateway');
 const PORT = process.env.PORT || 3001;
 
 // 서버 시작
@@ -56,17 +52,14 @@ const startServer = async (): Promise<void> => {
     });
 
     // 처리되지 않은 Promise 거부 핸들러
-    process.on(
-      'unhandledRejection',
-      (reason: unknown, promise: Promise<unknown>) => {
-        logger.error('💥 Unhandled Rejection', {
-          reason: reason instanceof Error ? reason.message : String(reason),
-          promise: promise.toString(),
-          timestamp: new Date().toISOString(),
-        });
-        process.exit(1);
-      }
-    );
+    process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
+      logger.error('💥 Unhandled Rejection', {
+        reason: reason?.message || reason,
+        promise: promise.toString(),
+        timestamp: new Date().toISOString(),
+      });
+      process.exit(1);
+    });
   } catch (error) {
     logger.error('❌ Failed to start server', {
       error: error instanceof Error ? error.message : 'Unknown error',

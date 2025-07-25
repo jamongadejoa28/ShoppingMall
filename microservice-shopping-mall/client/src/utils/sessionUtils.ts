@@ -76,6 +76,10 @@ export function getSessionId(): string {
       `${SESSION_STORAGE_KEY}_created`,
       Date.now().toString()
     );
+
+    console.log('새로운 쇼핑 세션 생성:', sessionId);
+  } else {
+    console.log('기존 쇼핑 세션 사용:', sessionId);
   }
 
   return sessionId;
@@ -90,6 +94,7 @@ export function refreshSessionId(): string {
   localStorage.setItem(SESSION_STORAGE_KEY, newSessionId);
   localStorage.setItem(`${SESSION_STORAGE_KEY}_created`, Date.now().toString());
 
+  console.log('세션 ID 갱신:', newSessionId);
   return newSessionId;
 }
 
@@ -101,6 +106,8 @@ export function clearSessionId(): void {
   localStorage.removeItem(SESSION_STORAGE_KEY);
   localStorage.removeItem(`${SESSION_STORAGE_KEY}_created`);
   localStorage.removeItem(SESSION_FINGERPRINT_KEY);
+
+  console.log('세션 정보 초기화 완료');
 }
 
 /**
@@ -159,6 +166,7 @@ export function isSessionValid(): boolean {
 export function cleanupSession(): void {
   if (!isSessionValid()) {
     clearSessionId();
+    console.log('만료된 세션 정리 완료');
   }
 }
 
@@ -175,6 +183,11 @@ export function initializeSession(): string {
 
   // 세션 ID 확보
   const sessionId = getSessionId();
+
+  // 세션 정보 로깅 (개발 환경)
+  if (process.env.NODE_ENV === 'development') {
+    console.log('세션 초기화 완료:', getSessionInfo());
+  }
 
   return sessionId;
 }

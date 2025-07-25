@@ -17,10 +17,11 @@ export const getSessionId = (): string => {
 };
 
 // =======================================
-// Axios 인스턴스 생성 (클라이언트 프록시 사용)
+// Axios 인스턴스 생성
 // =======================================
 const api = axios.create({
-  baseURL: '/api/v1', // 🔧 수정: 상대 경로로 변경하여 클라이언트 프록시 사용
+  baseURL:
+    process.env.REACT_APP_API_GATEWAY_URL || 'http://localhost:3001/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },

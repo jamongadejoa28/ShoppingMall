@@ -46,17 +46,16 @@ export class RegisterUserUseCase
       const emailResult = await this.sendVerificationEmail(savedUser);
 
       // 5. 성공 응답 생성
-      const userData = {
-        id: savedUser.id!,
-        name: savedUser.name,
-        email: savedUser.email,
-        role: savedUser.role,
-        isActive: savedUser.isActive,
-        createdAt: savedUser.createdAt,
-      };
-
       const responseData: RegisterUserResponse = {
-        user: userData,
+        user: {
+          id: savedUser.id!,
+          name: savedUser.name,
+          email: savedUser.email,
+          role: savedUser.role,
+          isEmailVerified: savedUser.isEmailVerified,
+          isActive: savedUser.isActive,
+          createdAt: savedUser.createdAt,
+        },
         emailSent: emailResult.sent,
       };
 
@@ -103,26 +102,13 @@ export class RegisterUserUseCase
    */
   private createUserEntity(request: RegisterUserRequest): User {
     try {
-      // 옵셔널 필드들을 포함한 사용자 데이터 생성
-      const userData: {
-        name: string;
-        email: string;
-        password: string;
-        role?: 'customer' | 'admin';
-        phoneNumber?: string;
-      } = {
+      // role이 undefined인 경우 기본값 처리
+      const userData = {
         name: request.name,
         email: request.email,
         password: request.password,
+        ...(request.role && { role: request.role }), // role이 있을 때만 포함
       };
-
-      // 옵셔널 필드들을 조건부로 추가
-      if (request.role && (request.role === 'customer' || request.role === 'admin')) {
-        userData.role = request.role as 'customer' | 'admin';
-      }
-      if (request.phoneNumber) {
-        userData.phoneNumber = request.phoneNumber;
-      }
 
       return new User(userData);
     } catch (error) {

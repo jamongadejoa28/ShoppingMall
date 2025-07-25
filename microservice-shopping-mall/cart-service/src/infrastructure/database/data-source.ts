@@ -15,7 +15,7 @@ export const AppDataSource = new DataSource({
   username: process.env.DB_USER || "postgres",
   password: process.env.DB_PASSWORD || "",
   database: process.env.DB_NAME || "shopping_mall_carts",
-  synchronize: process.env.NODE_ENV === "development", // 개발환경에서만 자동 스키마 생성
+  synchronize: false, // 프로덕션에서는 절대 true로 하면 안됨
   logging: process.env.NODE_ENV === "development",
   entities: [CartEntity, CartItemEntity],
   migrations: ["src/infrastructure/database/migrations/*.ts"],

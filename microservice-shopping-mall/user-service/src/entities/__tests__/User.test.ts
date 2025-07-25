@@ -21,6 +21,7 @@ describe('User Entity', () => {
       expect(user.password).not.toBe(userData.password);
       expect(user.password).toMatch(/^\$2[aby]\$\d+\$/); // bcrypt 해시 패턴
       expect(user.role).toBe('customer');
+      expect(user.isEmailVerified).toBe(false);
       expect(user.isActive).toBe(true);
       expect(user.id).toBeUndefined(); // 아직 저장되지 않음
       expect(user.createdAt).toBeDefined();
@@ -98,6 +99,14 @@ describe('User Entity', () => {
       });
     });
 
+    it('이메일 인증을 완료할 수 있어야 한다', () => {
+      // When
+      user.verifyEmail();
+
+      // Then
+      expect(user.isEmailVerified).toBe(true);
+      expect(user.emailVerifiedAt).toBeDefined();
+    });
 
     it('사용자를 비활성화할 수 있어야 한다', () => {
       // When
@@ -138,6 +147,7 @@ describe('User Entity', () => {
       // Given
       const updateData = {
         name: '새로운 이름',
+        phone: '010-1234-5678',
       };
 
       // When
@@ -145,6 +155,7 @@ describe('User Entity', () => {
 
       // Then
       expect(user.name).toBe(updateData.name);
+      expect(user.phone).toBe(updateData.phone);
       expect(user.updatedAt).toBeDefined();
     });
   });

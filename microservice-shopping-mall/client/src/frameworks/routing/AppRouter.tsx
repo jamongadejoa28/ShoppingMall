@@ -1,33 +1,60 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { MainLayout } from '../ui/components/Layout/MainLayout';
-import { AdminLayout } from '../ui/components/Admin/AdminLayout';
-import { AdminRoute } from '../ui/components/Admin/AdminRoute';
-import { ROUTES, ADMIN_ROUTES } from '../../shared/constants/routes';
+import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 
-// 실제 구현된 페이지들
+// 상수 직접 정의
+const ROUTES = {
+  HOME: '/',
+  LOGIN: '/login',
+  REGISTER: '/register',
+  PRODUCTS: '/products',
+  PRODUCT_DETAIL: '/products/:id',
+  CART: '/cart',
+  CHECKOUT: '/checkout',
+  ORDERS: '/orders',
+  PROFILE: '/profile',
+} as const;
+
+// Header 컴포넌트 직접 정의
+const Header: React.FC = () => {
+  return (
+    <header className="bg-white shadow-lg">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-16">
+          <Link to={ROUTES.HOME} className="flex items-center">
+            <h1 className="text-2xl font-bold text-blue-600">ShoppingMall</h1>
+          </Link>
+
+          <nav className="hidden md:flex space-x-8">
+            <Link
+              to={ROUTES.PRODUCTS}
+              className="text-gray-700 hover:text-blue-600 transition-colors"
+            >
+              상품
+            </Link>
+          </nav>
+
+          <div className="flex items-center space-x-4">
+            <Link
+              to={ROUTES.CART}
+              className="relative p-2 text-gray-700 hover:text-blue-600 transition-colors"
+            >
+              🛒
+            </Link>
+            <Link
+              to={ROUTES.LOGIN}
+              className="text-gray-700 hover:text-blue-600 transition-colors"
+            >
+              로그인
+            </Link>
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+};
+
+// ProductsPage 직접 정의
 const ProductsPage = React.lazy(() => import('../ui/pages/ProductsPage'));
-const LoginPage = React.lazy(() => import('../ui/pages/LoginPage'));
-const RegisterPage = React.lazy(() => import('../ui/pages/RegisterPage'));
-
-// Development only
-const AuthTestPage = React.lazy(() => import('../ui/pages/AuthTestPage'));
-
-// 관리자 페이지들
-const AdminDashboard = React.lazy(
-  () => import('../ui/pages/Admin/AdminDashboard')
-);
-const AdminUsers = React.lazy(() => import('../ui/pages/Admin/AdminUsers'));
-const AdminProducts = React.lazy(
-  () => import('../ui/pages/Admin/AdminProducts')
-);
-const AdminOrders = React.lazy(() => import('../ui/pages/Admin/AdminOrders'));
-const AdminInquiries = React.lazy(
-  () => import('../ui/pages/Admin/AdminInquiries')
-);
-const AdminSettings = React.lazy(
-  () => import('../ui/pages/Admin/AdminSettings')
-);
 
 // 임시 페이지 컴포넌트
 const TempPage: React.FC<{ title: string }> = ({ title }) => (
@@ -70,30 +97,6 @@ const OrdersPage = React.lazy(() =>
   }))
 );
 
-const OrderDetailPage = React.lazy(() =>
-  import('../ui/pages/OrderDetailPage').catch(() => ({
-    default: () => <SafePage title="주문 상세" />,
-  }))
-);
-
-const PaymentPage = React.lazy(() =>
-  import('../ui/pages/PaymentPage').catch(() => ({
-    default: () => <SafePage title="결제" />,
-  }))
-);
-
-const PaymentSuccessPage = React.lazy(() =>
-  import('../ui/pages/PaymentSuccessPage').catch(() => ({
-    default: () => <SafePage title="결제 성공" />,
-  }))
-);
-
-const PaymentFailPage = React.lazy(() =>
-  import('../ui/pages/PaymentFailPage').catch(() => ({
-    default: () => <SafePage title="결제 실패" />,
-  }))
-);
-
 const ProfilePage = React.lazy(() =>
   import('../ui/pages/ProfilePage').catch(() => ({
     default: () => <SafePage title="프로필" />,
@@ -103,127 +106,46 @@ const ProfilePage = React.lazy(() =>
 export const AppRouter: React.FC = () => {
   return (
     <Router>
-      <React.Suspense
-        fallback={
-          <div className="flex justify-center items-center h-screen">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          </div>
-        }
-      >
-        <Routes>
-          {/* 관리자 페이지들 - AdminLayout 사용 */}
-          <Route
-            path={ADMIN_ROUTES.DASHBOARD}
-            element={
-              <AdminRoute>
-                <AdminLayout>
-                  <AdminDashboard />
-                </AdminLayout>
-              </AdminRoute>
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <React.Suspense
+            fallback={
+              <div className="flex justify-center items-center h-64">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+              </div>
             }
-          />
-          <Route
-            path={ADMIN_ROUTES.USERS}
-            element={
-              <AdminRoute>
-                <AdminLayout>
-                  <AdminUsers />
-                </AdminLayout>
-              </AdminRoute>
-            }
-          />
-          <Route
-            path={ADMIN_ROUTES.PRODUCTS}
-            element={
-              <AdminRoute>
-                <AdminLayout>
-                  <AdminProducts />
-                </AdminLayout>
-              </AdminRoute>
-            }
-          />
-          <Route
-            path={ADMIN_ROUTES.ORDERS}
-            element={
-              <AdminRoute>
-                <AdminLayout>
-                  <AdminOrders />
-                </AdminLayout>
-              </AdminRoute>
-            }
-          />
-          <Route
-            path={ADMIN_ROUTES.INQUIRIES}
-            element={
-              <AdminRoute>
-                <AdminLayout>
-                  <AdminInquiries />
-                </AdminLayout>
-              </AdminRoute>
-            }
-          />
-          <Route
-            path={ADMIN_ROUTES.SETTINGS}
-            element={
-              <AdminRoute>
-                <AdminLayout>
-                  <AdminSettings />
-                </AdminLayout>
-              </AdminRoute>
-            }
-          />
-
-          {/* 일반 사용자 페이지들 - MainLayout 사용 */}
-          <Route
-            path="/*"
-            element={
-              <MainLayout>
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                  <Routes>
-                    <Route path={ROUTES.HOME} element={<ProductsPage />} />
-                    <Route path={ROUTES.LOGIN} element={<LoginPage />} />
-                    <Route path={ROUTES.REGISTER} element={<RegisterPage />} />
-                    <Route path={ROUTES.PRODUCTS} element={<ProductsPage />} />
-                    <Route
-                      path={ROUTES.PRODUCT_DETAIL}
-                      element={<ProductDetailPage />}
-                    />
-                    <Route path={ROUTES.CART} element={<CartPage />} />
-                    <Route path={ROUTES.CHECKOUT} element={<CheckoutPage />} />
-                    <Route path={ROUTES.ORDERS} element={<OrdersPage />} />
-                    <Route
-                      path={ROUTES.ORDER_DETAIL}
-                      element={<OrderDetailPage />}
-                    />
-                    <Route
-                      path={ROUTES.ORDER_PAYMENT}
-                      element={<PaymentPage />}
-                    />
-                    <Route
-                      path="/orders/:orderId/payment/success"
-                      element={<PaymentSuccessPage />}
-                    />
-                    <Route
-                      path="/orders/:orderId/payment/fail"
-                      element={<PaymentFailPage />}
-                    />
-                    <Route path={ROUTES.PROFILE} element={<ProfilePage />} />
-
-                    {/* Development only auth test page */}
-                    {process.env.NODE_ENV === 'development' && (
-                      <Route path="/auth-test" element={<AuthTestPage />} />
-                    )}
-                    <Route
-                      path="*"
-                      element={<TempPage title="페이지를 찾을 수 없습니다" />}
-                    />
-                  </Routes>
-                </div>
-              </MainLayout>
-            }
-          />
-        </Routes>
-      </React.Suspense>
+          >
+            <Routes>
+              <Route
+                path={ROUTES.HOME}
+                element={<TempPage title="홈페이지" />}
+              />
+              <Route
+                path={ROUTES.LOGIN}
+                element={<TempPage title="로그인" />}
+              />
+              <Route
+                path={ROUTES.REGISTER}
+                element={<TempPage title="회원가입" />}
+              />
+              <Route path={ROUTES.PRODUCTS} element={<ProductsPage />} />
+              <Route
+                path={ROUTES.PRODUCT_DETAIL}
+                element={<ProductDetailPage />}
+              />
+              <Route path={ROUTES.CART} element={<CartPage />} />
+              <Route path={ROUTES.CHECKOUT} element={<CheckoutPage />} />
+              <Route path={ROUTES.ORDERS} element={<OrdersPage />} />
+              <Route path={ROUTES.PROFILE} element={<ProfilePage />} />
+              <Route
+                path="*"
+                element={<TempPage title="페이지를 찾을 수 없습니다" />}
+              />
+            </Routes>
+          </React.Suspense>
+        </main>
+      </div>
     </Router>
   );
 };

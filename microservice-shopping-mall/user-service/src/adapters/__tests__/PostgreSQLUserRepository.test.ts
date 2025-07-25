@@ -72,6 +72,7 @@ describe('PostgreSQLUserRepository', () => {
       expect(savedUser.email).toBe(user.email);
       expect(savedUser.password).toBe(user.password); // 해시된 비밀번호
       expect(savedUser.role).toBe('customer');
+      expect(savedUser.isEmailVerified).toBe(false);
       expect(savedUser.isActive).toBe(true);
       expect(savedUser.createdAt).toBeDefined();
       expect(savedUser.updatedAt).toBeDefined();
@@ -97,6 +98,7 @@ describe('PostgreSQLUserRepository', () => {
 
       // 사용자 정보 수정
       savedUser.updateProfile({ name: '홍길동 수정' });
+      savedUser.verifyEmail();
 
       // When
       const updatedUser = await repository.save(savedUser);
@@ -104,6 +106,8 @@ describe('PostgreSQLUserRepository', () => {
       // Then
       expect(updatedUser.id).toBe(savedUser.id);
       expect(updatedUser.name).toBe('홍길동 수정');
+      expect(updatedUser.isEmailVerified).toBe(true);
+      expect(updatedUser.emailVerifiedAt).toBeDefined();
     });
   });
 
@@ -196,6 +200,7 @@ describe('PostgreSQLUserRepository', () => {
       // 프로필 업데이트
       savedUser.updateProfile({
         name: '홍길동 업데이트',
+        phone: '010-1234-5678',
       });
 
       // When
@@ -203,7 +208,7 @@ describe('PostgreSQLUserRepository', () => {
 
       // Then
       expect(updatedUser.name).toBe('홍길동 업데이트');
-      expect(updatedUser.name).toBe('홍길동 업데이트');
+      expect(updatedUser.phone).toBe('010-1234-5678');
       expect(updatedUser.updatedAt.getTime()).toBeGreaterThan(
         savedUser.createdAt.getTime()
       );

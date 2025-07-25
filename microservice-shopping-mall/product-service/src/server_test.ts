@@ -12,7 +12,7 @@ import helmet from "helmet";
 import "reflect-metadata";
 import { DataSource } from "typeorm";
 import { DatabaseConfig } from "./infrastructure/config/DatabaseConfig";
-import { DIContainer } from "./infrastructure/di/Container";
+import { DIContainer } from "./infrastructure/di/exeContainer";
 import { TYPES } from "./infrastructure/di/types";
 
 // 환경 변수 로드

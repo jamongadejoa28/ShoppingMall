@@ -62,6 +62,7 @@ export class LoginUserUseCase
           name: user.name,
           email: user.email,
           role: user.role,
+          isEmailVerified: user.isEmailVerified,
           lastLoginAt: new Date(),
         },
         accessToken: tokens.accessToken,

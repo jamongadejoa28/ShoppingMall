@@ -32,33 +32,33 @@ export class ProductEntity {
   @PrimaryGeneratedColumn("uuid")
   id!: string;
 
-  @Column({ type: "varchar", length: 200, nullable: true })
-  name?: string;
+  @Column({ type: "varchar", length: 200, nullable: false })
+  name!: string;
 
-  @Column({ type: "text", nullable: true })
-  description?: string;
+  @Column({ type: "text", nullable: false })
+  description!: string;
 
   @Column({
     type: "decimal",
     precision: 10,
     scale: 2,
-    nullable: true,
+    nullable: false,
   })
-  price?: number;
+  price!: number;
 
-  @Column({ type: "uuid", nullable: true, name: "category_id" })
-  categoryId?: string;
+  @Column({ type: "uuid", nullable: false })
+  categoryId!: string;
 
-  @Column({ type: "varchar", length: 100, nullable: true })
-  brand?: string;
+  @Column({ type: "varchar", length: 100, nullable: false })
+  brand!: string;
 
   @Column({
     type: "varchar",
     length: 50,
-    nullable: true,
+    nullable: false,
     unique: true,
   })
-  sku?: string;
+  sku!: string;
 
   // 선택적 물리적 속성들
   @Column({
@@ -123,38 +123,25 @@ export class ProductEntity {
   })
   tags!: string[];
 
-  @Column({ type: "boolean", default: true, name: "is_active" })
+  @Column({ type: "boolean", default: true })
   isActive!: boolean;
 
-  // 원래 가격 (할인 전 가격)
+  // 할인 가격 (선택적)
   @Column({
     type: "decimal",
-    precision: 12,
+    precision: 10,
     scale: 2,
     nullable: true,
-    name: "original_price",
   })
-  originalPrice?: number;
-
-  // 할인율 (0-100)
-  @Column({
-    type: "decimal",
-    precision: 5,
-    scale: 2,
-    default: 0.00,
-    name: "discount_percentage",
-  })
-  discountPercentage!: number;
+  discountPrice?: number;
 
   @CreateDateColumn({
     type: process.env.NODE_ENV === "test" ? "datetime" : "timestamp",
-    name: "created_at",
   })
   createdAt!: Date;
 
   @UpdateDateColumn({
     type: process.env.NODE_ENV === "test" ? "datetime" : "timestamp",
-    name: "updated_at",
   })
   updatedAt!: Date;
 
@@ -164,7 +151,7 @@ export class ProductEntity {
 
   // Category와의 관계 - Lazy Loading으로 순환 참조 방지
   @ManyToOne("CategoryEntity", { eager: false, lazy: true })
-  @JoinColumn({ name: "category_id" })
+  @JoinColumn({ name: "categoryId" })
   category?: any; // any 타입으로 순환 참조 방지
 
   // ========================================
@@ -189,29 +176,16 @@ export class ProductEntity {
 
     // 필수 속성들
     if (product.getId()) entity.id = product.getId();
+    entity.name = product.getName();
+    entity.description = product.getDescription();
+    entity.price = product.getPrice();
+    entity.categoryId = product.getCategoryId();
+    entity.brand = product.getBrand();
+    entity.sku = product.getSku();
     entity.tags = product.getTags();
     entity.isActive = product.isActive();
     entity.createdAt = product.getCreatedAt();
     entity.updatedAt = product.getUpdatedAt();
-
-    // 선택적 속성들로 변경
-    const name = product.getName();
-    if (name !== undefined) entity.name = name;
-    
-    const description = product.getDescription();
-    if (description !== undefined) entity.description = description;
-    
-    const price = product.getPrice();
-    if (price !== undefined) entity.price = price;
-    
-    const categoryId = product.getCategoryId();
-    if (categoryId !== undefined) entity.categoryId = categoryId;
-    
-    const brand = product.getBrand();
-    if (brand !== undefined) entity.brand = brand;
-    
-    const sku = product.getSku();
-    if (sku !== undefined) entity.sku = sku;
 
     // 선택적 속성들 - exactOptionalPropertyTypes 대응
     const weight = product.getWeight();
@@ -224,14 +198,9 @@ export class ProductEntity {
       entity.dimensions = dimensions;
     }
 
-    const originalPrice = product.getOriginalPrice();
-    if (originalPrice !== undefined) {
-      entity.originalPrice = originalPrice;
-    }
-
-    const discountPercentage = product.getDiscountPercentage();
-    if (discountPercentage !== undefined) {
-      entity.discountPercentage = discountPercentage;
+    const discountPrice = product.getDiscountPrice();
+    if (discountPrice !== undefined) {
+      entity.discountPrice = discountPrice;
     }
 
     return entity;
@@ -245,16 +214,15 @@ export class ProductEntity {
     const { Product } = require("../../entities/Product");
 
     // Repository에서는 이미 저장된 데이터를 복원하므로 restore 메서드 사용
-    // null/undefined 필드에 대해 기본값 제공
     const productData: any = {
       id: this.id,
-      name: this.name || `Product-${this.id.slice(0, 8)}`, // 기본 이름
-      description: this.description || '', // 빈 설명
-      price: this.price || 0, // 기본 가격
-      categoryId: this.categoryId || '', // 빈 카테고리 ID
-      brand: this.brand || 'Unknown', // 기본 브랜드
-      sku: this.sku || `SKU-${this.id.slice(0, 8)}`, // 기본 SKU
-      tags: this.tags || [],
+      name: this.name,
+      description: this.description,
+      price: this.price,
+      categoryId: this.categoryId,
+      brand: this.brand,
+      sku: this.sku,
+      tags: this.tags,
       isActive: this.isActive,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
@@ -269,12 +237,8 @@ export class ProductEntity {
       productData.dimensions = this.dimensions;
     }
 
-    if (this.originalPrice !== undefined) {
-      productData.originalPrice = this.originalPrice;
-    }
-
-    if (this.discountPercentage !== undefined) {
-      productData.discountPercentage = this.discountPercentage;
+    if (this.discountPrice !== undefined) {
+      productData.discountPrice = this.discountPrice;
     }
 
     return Product.restore(productData);
@@ -288,7 +252,7 @@ export class ProductEntity {
    * 유효한 가격 정보인지 확인
    */
   hasValidPrice(): boolean {
-    return this.price !== undefined && this.price !== null && this.price > 0;
+    return this.price > 0;
   }
 
   /**
@@ -296,11 +260,9 @@ export class ProductEntity {
    */
   hasDiscount(): boolean {
     return (
-      this.originalPrice !== undefined &&
-      this.originalPrice !== null &&
-      this.price !== undefined &&
-      this.price !== null &&
-      this.originalPrice > this.price
+      this.discountPrice !== undefined &&
+      this.discountPrice !== null &&
+      this.discountPrice < this.price
     );
   }
 
@@ -308,15 +270,14 @@ export class ProductEntity {
    * 실제 판매 가격 반환
    */
   getEffectivePrice(): number {
-    return this.price || 0;
+    return this.hasDiscount() ? this.discountPrice! : this.price;
   }
 
   /**
    * 검색용 텍스트 반환 (이름 + 브랜드 + 태그)
    */
   getSearchText(): string {
-    return [this.name || '', this.brand || '', ...(this.tags || [])]
-      .filter(text => text)
+    return [this.name, this.brand, ...(this.tags || [])]
       .join(" ")
       .toLowerCase();
   }
@@ -327,10 +288,10 @@ export class ProductEntity {
   getSummary() {
     return {
       id: this.id,
-      name: this.name || null,
-      price: this.price || null,
+      name: this.name,
+      price: this.price,
       effectivePrice: this.getEffectivePrice(),
-      brand: this.brand || null,
+      brand: this.brand,
       isActive: this.isActive,
       hasDiscount: this.hasDiscount(),
       createdAt: this.createdAt,

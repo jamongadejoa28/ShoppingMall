@@ -9,12 +9,12 @@ import React from 'react';
 // ========================================
 
 interface ConfirmDialogProps {
+  isOpen: boolean;
   title?: string;
-  message: string | React.ReactNode;
+  message: string;
   confirmText?: string;
   cancelText?: string;
   confirmButtonClass?: string;
-  isLoading?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -24,15 +24,17 @@ interface ConfirmDialogProps {
 // ========================================
 
 const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
+  isOpen,
   title = '확인',
   message,
   confirmText = '확인',
   cancelText = '취소',
   confirmButtonClass = 'bg-red-600 hover:bg-red-700 text-white',
-  isLoading = false,
   onConfirm,
   onCancel,
 }) => {
+  if (!isOpen) return null;
+
   return (
     <>
       {/* 배경 오버레이 */}
@@ -70,35 +72,22 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 
           {/* 메시지 */}
           <div className="mb-6">
-            {typeof message === 'string' ? (
-              <p className="text-gray-700 leading-relaxed">{message}</p>
-            ) : (
-              <div className="text-gray-700 leading-relaxed">{message}</div>
-            )}
+            <p className="text-gray-700 leading-relaxed">{message}</p>
           </div>
 
           {/* 버튼들 */}
           <div className="flex gap-3 justify-end">
             <button
               onClick={onCancel}
-              disabled={isLoading}
-              className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-medium transition-colors"
+              className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors"
             >
               {cancelText}
             </button>
             <button
               onClick={onConfirm}
-              disabled={isLoading}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${confirmButtonClass}`}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${confirmButtonClass}`}
             >
-              {isLoading ? (
-                <div className="flex items-center">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  처리 중...
-                </div>
-              ) : (
-                confirmText
-              )}
+              {confirmText}
             </button>
           </div>
         </div>
@@ -107,5 +96,4 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   );
 };
 
-export { ConfirmDialog };
 export default ConfirmDialog;

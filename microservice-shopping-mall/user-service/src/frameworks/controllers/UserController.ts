@@ -1,137 +1,136 @@
 // ========================================
-// User Controller - 사용자 관련 HTTP 요청 처리
+// User Controller - Framework 계층
+// src/framework/controllers/UserController.ts
 // ========================================
 
 import { Request, Response, NextFunction } from 'express';
 import { RegisterUserUseCase } from '../../usecases/RegisterUserUseCase';
 import { LoginUserUseCase } from '../../usecases/LoginUserUseCase';
-import { RefreshTokenUseCase } from '../../usecases/RefreshTokenUseCase';
 import { GetUserProfileUseCase } from '../../usecases/GetUserProfileUseCase';
 import { UpdateUserProfileUseCase } from '../../usecases/UpdateUserProfileUseCase';
 import { DeactivateUserUseCase } from '../../usecases/DeactivateUserUseCase';
-import { GetUsersUseCase } from '../../usecases/GetUsersUseCase';
-import { GetUserStatsUseCase } from '../../usecases/GetUserStatsUseCase';
+import {
+  RegisterUserRequest,
+  LoginUserRequest,
+  UpdateUserProfileRequest,
+  DomainError,
+  RepositoryError,
+  ExternalServiceError,
+} from '../../usecases/types';
 
+/**
+ * UserController - Framework 계층
+ *
+ * 역할:
+ * - HTTP 요청/응답 처리
+ * - Use Case 계층과의 인터페이스
+ * - 에러 핸들링 및 상태 코드 매핑
+ *
+ * 특징:
+ * - Express 5.1.0 최신 문법 사용
+ * - Clean Architecture 원칙 준수
+ * - SOLID 원칙 적용
+ */
 export class UserController {
-  private readonly registerUserUseCase: RegisterUserUseCase;
-  private readonly loginUserUseCase: LoginUserUseCase;
-  private readonly refreshTokenUseCase: RefreshTokenUseCase;
-  private readonly getUserProfileUseCase: GetUserProfileUseCase;
-  private readonly updateUserProfileUseCase: UpdateUserProfileUseCase;
-  private readonly deactivateUserUseCase: DeactivateUserUseCase;
-  private readonly getUsersUseCase: GetUsersUseCase;
-  private readonly getUserStatsUseCase: GetUserStatsUseCase;
-
   constructor(
-    registerUserUseCase: RegisterUserUseCase,
-    loginUserUseCase: LoginUserUseCase,
-    refreshTokenUseCase: RefreshTokenUseCase,
-    getUserProfileUseCase: GetUserProfileUseCase,
-    updateUserProfileUseCase: UpdateUserProfileUseCase,
-    deactivateUserUseCase: DeactivateUserUseCase,
-    getUsersUseCase: GetUsersUseCase,
-    getUserStatsUseCase: GetUserStatsUseCase
-  ) {
-    this.registerUserUseCase = registerUserUseCase;
-    this.loginUserUseCase = loginUserUseCase;
-    this.refreshTokenUseCase = refreshTokenUseCase;
-    this.getUserProfileUseCase = getUserProfileUseCase;
-    this.updateUserProfileUseCase = updateUserProfileUseCase;
-    this.deactivateUserUseCase = deactivateUserUseCase;
-    this.getUsersUseCase = getUsersUseCase;
-    this.getUserStatsUseCase = getUserStatsUseCase;
-  }
+    private readonly registerUserUseCase: RegisterUserUseCase,
+    private readonly loginUserUseCase: LoginUserUseCase,
+    private readonly getUserProfileUseCase: GetUserProfileUseCase,
+    private readonly updateUserProfileUseCase: UpdateUserProfileUseCase,
+    private readonly deactivateUserUseCase: DeactivateUserUseCase
+  ) {}
 
   /**
-   * 회원가입
+   * 회원가입 API
+   * POST /api/users/register
    */
-  public register = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  register = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
-      const result = await this.registerUserUseCase.execute(req.body);
+      const registerRequest: RegisterUserRequest = {
+        name: req.body.name,
+        email: req.body.email,
+        password: req.body.password,
+        role: req.body.role,
+      };
 
-      if (result.success) {
-        res.status(201).json({
-          success: true,
-          message: '회원가입이 성공적으로 완료되었습니다.',
-          data: result.data,
-        });
-      } else {
+      const result = await this.registerUserUseCase.execute(registerRequest);
+
+      if (!result.success) {
         res.status(400).json({
           success: false,
-          message: result.error || '회원가입에 실패했습니다.',
-          error: 'REGISTER_FAILED',
+          message: result.error || '회원가입에 실패했습니다',
           data: null,
         });
+        return;
       }
+
+      res.status(201).json({
+        success: true,
+        message: '회원가입이 성공적으로 완료되었습니다',
+        data: result.data,
+      });
     } catch (error) {
-      next(error);
+      next(this.handleError(error));
     }
   };
 
   /**
-   * 로그인
+   * 로그인 API
+   * POST /api/users/login
    */
-  public login = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  login = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
-      const result = await this.loginUserUseCase.execute(req.body);
+      const loginRequest: LoginUserRequest = {
+        email: req.body.email,
+        password: req.body.password,
+      };
 
-      if (result.success) {
-        res.status(200).json({
-          success: true,
-          message: '로그인이 성공적으로 완료되었습니다.',
-          data: result.data,
-        });
-      } else {
-        res.status(400).json({
-          success: false,
-          message: result.error || '로그인에 실패했습니다.',
-          error: 'LOGIN_FAILED',
-          data: null,
-        });
-      }
-    } catch (error) {
-      next(error);
-    }
-  };
+      const result = await this.loginUserUseCase.execute(loginRequest);
 
-  /**
-   * 토큰 갱신
-   */
-  public refreshToken = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const result = await this.refreshTokenUseCase.execute(req.body);
-
-      if (result.success) {
-        res.status(200).json({
-          success: true,
-          message: '토큰이 성공적으로 갱신되었습니다.',
-          data: result.data,
-        });
-      } else {
+      if (!result.success) {
         res.status(401).json({
           success: false,
-          message: result.error || '토큰 갱신에 실패했습니다.',
-          error: 'REFRESH_FAILED',
+          message: result.error || '로그인에 실패했습니다',
           data: null,
         });
+        return;
       }
+
+      res.status(200).json({
+        success: true,
+        message: '로그인이 성공적으로 완료되었습니다',
+        data: result.data,
+      });
     } catch (error) {
-      next(error);
+      next(this.handleError(error));
     }
   };
 
   /**
-   * 프로필 조회
+   * 사용자 프로필 조회 API
+   * GET /api/users/profile
    */
-  public getProfile = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  getProfile = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
+      // JWT 미들웨어에서 설정된 사용자 ID 사용
       const userId = req.user?.id;
 
       if (!userId) {
         res.status(401).json({
           success: false,
-          message: '인증이 필요합니다.',
-          error: 'UNAUTHORIZED',
+          message: '인증이 필요합니다',
           data: null,
         });
         return;
@@ -139,78 +138,96 @@ export class UserController {
 
       const result = await this.getUserProfileUseCase.execute({ userId });
 
-      if (result.success) {
-        res.status(200).json({
-          success: true,
-          message: '프로필 조회가 완료되었습니다.',
-          data: result.data,
-        });
-      } else {
-        res.status(404).json({
+      if (!result.success) {
+        const statusCode = result.error?.includes('찾을 수 없습니다')
+          ? 404
+          : 400;
+        res.status(statusCode).json({
           success: false,
-          message: result.error || '사용자를 찾을 수 없습니다.',
-          error: 'USER_NOT_FOUND',
-          data: null,
-        });
-      }
-    } catch (error) {
-      next(error);
-    }
-  };
-
-  /**
-   * 프로필 수정
-   */
-  public updateProfile = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const userId = req.user?.id;
-
-      if (!userId) {
-        res.status(401).json({
-          success: false,
-          message: '인증이 필요합니다.',
-          error: 'UNAUTHORIZED',
+          message: result.error || '프로필 조회에 실패했습니다',
           data: null,
         });
         return;
       }
 
-      const result = await this.updateUserProfileUseCase.execute({
-        userId,
-        ...req.body,
+      res.status(200).json({
+        success: true,
+        message: '프로필 조회가 성공적으로 완료되었습니다',
+        data: result.data,
       });
-
-      if (result.success) {
-        res.status(200).json({
-          success: true,
-          message: '프로필 수정이 완료되었습니다.',
-          data: result.data,
-        });
-      } else {
-        res.status(400).json({
-          success: false,
-          message: result.error || '프로필 수정에 실패했습니다.',
-          error: 'UPDATE_FAILED',
-          data: null,
-        });
-      }
     } catch (error) {
-      next(error);
+      next(this.handleError(error));
     }
   };
 
   /**
-   * 계정 비활성화
+   * 사용자 프로필 업데이트 API
+   * PUT /api/users/profile
    */
-  public deactivateAccount = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  updateProfile = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const userId = req.user?.id;
 
       if (!userId) {
         res.status(401).json({
           success: false,
-          message: '인증이 필요합니다.',
-          error: 'UNAUTHORIZED',
+          message: '인증이 필요합니다',
+          data: null,
+        });
+        return;
+      }
+
+      const updateRequest: UpdateUserProfileRequest = {
+        userId,
+        name: req.body.name,
+        phone: req.body.phone,
+        address: req.body.address,
+      };
+
+      const result = await this.updateUserProfileUseCase.execute(updateRequest);
+
+      if (!result.success) {
+        const statusCode = result.error?.includes('찾을 수 없습니다')
+          ? 404
+          : 400;
+        res.status(statusCode).json({
+          success: false,
+          message: result.error || '프로필 업데이트에 실패했습니다',
+          data: null,
+        });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        message: '프로필 업데이트가 성공적으로 완료되었습니다',
+        data: result.data,
+      });
+    } catch (error) {
+      next(this.handleError(error));
+    }
+  };
+
+  /**
+   * 회원 탈퇴 API
+   * DELETE /api/users/profile
+   */
+  deactivateAccount = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const userId = req.user?.id;
+
+      if (!userId) {
+        res.status(401).json({
+          success: false,
+          message: '인증이 필요합니다',
           data: null,
         });
         return;
@@ -218,99 +235,74 @@ export class UserController {
 
       const result = await this.deactivateUserUseCase.execute({ userId });
 
-      if (result.success) {
-        res.status(200).json({
-          success: true,
-          message: '계정이 비활성화되었습니다.',
-          data: result.data,
-        });
-      } else {
-        res.status(400).json({
+      if (!result.success) {
+        const statusCode = result.error?.includes('찾을 수 없습니다')
+          ? 404
+          : 400;
+        res.status(statusCode).json({
           success: false,
-          message: result.error || '계정 비활성화에 실패했습니다.',
-          error: 'DEACTIVATION_FAILED',
+          message: result.error || '회원 탈퇴에 실패했습니다',
           data: null,
         });
+        return;
       }
+
+      res.status(200).json({
+        success: true,
+        message: '회원 탈퇴가 성공적으로 완료되었습니다',
+        data: result.data,
+      });
     } catch (error) {
-      next(error);
+      next(this.handleError(error));
     }
   };
 
   /**
-   * 사용자 목록 조회 (관리자 전용)
+   * 에러 핸들링 헬퍼 메서드
+   * 도메인 에러를 HTTP 상태 코드로 매핑
    */
-  public getUsers = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      
-      const filters: {
-        page: number;
-        limit: number;
-        search?: string;
-        role: 'customer' | 'admin' | 'all';
-        isActive?: boolean;
-        sortBy: 'name' | 'email' | 'createdAt' | 'lastLoginAt';
-        sortOrder: 'asc' | 'desc';
-      } = {
-        page: parseInt(req.query.page as string) || 1,
-        limit: parseInt(req.query.limit as string) || 20,
-        role: (req.query.role as 'customer' | 'admin' | 'all') || 'all',
-        sortBy: (req.query.sortBy as 'name' | 'email' | 'createdAt' | 'lastLoginAt') || 'createdAt',
-        sortOrder: req.query.sortOrder as 'asc' | 'desc' || 'desc',
+  private handleError(error: unknown): Error {
+    if (error instanceof DomainError) {
+      const httpError = new Error(error.message) as any;
+      httpError.statusCode = error.statusCode;
+      httpError.code = error.code;
+      return httpError;
+    }
+
+    if (error instanceof RepositoryError) {
+      const httpError = new Error('데이터베이스 오류가 발생했습니다') as any;
+      httpError.statusCode = 500;
+      httpError.originalError = error.originalError;
+      return httpError;
+    }
+
+    if (error instanceof ExternalServiceError) {
+      const httpError = new Error('외부 서비스 오류가 발생했습니다') as any;
+      httpError.statusCode = 503;
+      httpError.service = error.service;
+      httpError.originalError = error.originalError;
+      return httpError;
+    }
+
+    // 예상치 못한 에러
+    const httpError = new Error('내부 서버 오류가 발생했습니다') as any;
+    httpError.statusCode = 500;
+    httpError.originalError = error;
+    return httpError;
+  }
+}
+
+// ========================================
+// Express Request 타입 확장
+// ========================================
+declare global {
+  namespace Express {
+    interface Request {
+      user?: {
+        id: string;
+        email: string;
+        role: 'customer' | 'admin';
       };
-
-      // Optional parameters 추가
-      if (req.query.search && typeof req.query.search === 'string') {
-        filters.search = req.query.search;
-      }
-      if (req.query.isActive) {
-        filters.isActive = req.query.isActive === 'true';
-      }
-
-      const result = await this.getUsersUseCase.execute(filters);
-
-      if (result.success) {
-        res.status(200).json({
-          success: true,
-          message: '사용자 목록 조회가 완료되었습니다.',
-          data: result.data,
-        });
-      } else {
-        res.status(400).json({
-          success: false,
-          message: result.error || '사용자 목록 조회에 실패했습니다.',
-          error: 'GET_USERS_FAILED',
-          data: null,
-        });
-      }
-    } catch (error) {
-      next(error);
     }
-  };
-
-  /**
-   * 사용자 통계 조회 (관리자 전용)
-   */
-  public getUserStats = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const result = await this.getUserStatsUseCase.execute({});
-
-      if (result.success) {
-        res.status(200).json({
-          success: true,
-          message: '사용자 통계 조회가 완료되었습니다.',
-          data: result.data,
-        });
-      } else {
-        res.status(400).json({
-          success: false,
-          message: result.error || '사용자 통계 조회에 실패했습니다.',
-          error: 'GET_STATS_FAILED',
-          data: null,
-        });
-      }
-    } catch (error) {
-      next(error);
-    }
-  };
+  }
 }

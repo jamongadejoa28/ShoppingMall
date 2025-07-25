@@ -1,94 +1,55 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
-import axios from 'axios';
+// import bcrypt from 'bcryptjs'; // Commented out since it's not used
 import {
-  asyncHandler,
-  createValidationError,
-} from '../middleware/errorHandler';
-
-// Define types locally
-// Note: User interface defined for potential future use
-// interface User {
-//   id: string;
-//   email: string;
-//   name: string;
-//   role: UserRole;
-//   isEmailVerified?: boolean;
-//   isActive: boolean;
-//   createdAt: Date;
-//   updatedAt: Date;
-// }
-
-// Note: UserRole enum defined for potential future use
-// enum UserRole {
-//   USER = 'user',
-//   ADMIN = 'admin',
-//   CUSTOMER = 'customer',
-// }
-
-// Note: TokenPair interface defined for potential future use
-// interface TokenPair {
-//   accessToken: string;
-//   refreshToken: string;
-//   expiresIn: number;
-// }
-
-interface ApiResponse<T = unknown> {
-  success: boolean;
-  data?: T;
-  message?: string;
-  timestamp: string;
-  requestId?: string;
-  error?: string;
-}
-
-const HTTP_STATUS = {
-  OK: 200,
-  CREATED: 201,
-  BAD_REQUEST: 400,
-  UNAUTHORIZED: 401,
-  FORBIDDEN: 403,
-  NOT_FOUND: 404,
-  CONFLICT: 409,
-  INTERNAL_SERVER_ERROR: 500,
-  SERVICE_UNAVAILABLE: 503,
-} as const;
-
-const createLogger = () => console;
-
-// Request interface is extended globally in app.ts
+  createLogger,
+  generateTokenPair,
+  verifyRefreshToken,
+  ApiResponse,
+  HTTP_STATUS,
+  User,
+  UserRole,
+  TokenPair,
+  // ErrorCode, // Commented out since it's not used
+} from '@shopping-mall/shared';
+import { asyncHandler, createValidationError } from '@middleware/errorHandler';
 
 const router = Router();
-const logger = createLogger();
+const logger = createLogger('api-gateway');
 
-// 진단용 라우트 (맨 앞에 배치)
-router.get('/diagnose', (req: Request, res: Response) => {
-  res.json({
-    success: true,
-    message: 'AUTH 라우터가 정상 작동 중입니다!',
-    timestamp: new Date().toISOString(),
-    userServiceUrl: process.env.USER_SERVICE_URL || 'http://localhost:3002',
-  });
-});
+// ===== Mock 사용자 데이터 (실제 서비스 구현 전까지 사용) =====
+// 실제로는 User Service에서 가져올 데이터
+const mockUsers: User[] = [
+  {
+    id: 'user-1',
+    email: 'admin@example.com',
+    name: '관리자',
+    role: UserRole.ADMIN,
+    isActive: true,
+    createdAt: new Date('2024-01-01'),
+    updatedAt: new Date('2024-01-01'),
+  },
+  {
+    id: 'user-2',
+    email: 'customer@example.com',
+    name: '고객',
+    role: UserRole.CUSTOMER,
+    isActive: true,
+    createdAt: new Date('2024-01-01'),
+    updatedAt: new Date('2024-01-01'),
+  },
+];
 
-// User Service URL
-const USER_SERVICE_URL =
-  process.env.USER_SERVICE_URL || 'http://localhost:3002';
+// Mock 비밀번호 (실제로는 해시된 상태로 DB에 저장)
+const mockPasswords: Record<string, string> = {
+  'admin@example.com':
+    '$2a$10$N9qo8uLOickgx2ZMRZoMye1F1YhvIc1d8z7l9r7Z9Z4v1F1YhvIc1d', // "admin123"
+  'customer@example.com':
+    '$2a$10$N9qo8uLOickgx2ZMRZoMye1F1YhvIc1d8z7l9r7Z9Z4v1F1YhvIc1d', // "customer123"
+};
 
-// Error type guard for axios errors
-interface AxiosErrorResponse {
-  response?: {
-    data?: {
-      message?: string;
-    };
-    status?: number;
-  };
-  message?: string;
-}
-
-function isAxiosError(error: unknown): error is AxiosErrorResponse {
-  return typeof error === 'object' && error !== null;
-}
+// 리프레시 토큰 저장소 (실제로는 Redis에 저장)
+const refreshTokenStore = new Set<string>();
 
 // ===== 유효성 검사 규칙 =====
 const loginValidation = [
@@ -97,8 +58,8 @@ const loginValidation = [
     .normalizeEmail()
     .withMessage('유효한 이메일을 입력해주세요'),
   body('password')
-    .isLength({ min: 8 })
-    .withMessage('비밀번호는 최소 8자 이상이어야 합니다'),
+    .isLength({ min: 6 })
+    .withMessage('비밀번호는 최소 6자 이상이어야 합니다'),
 ];
 
 const registerValidation = [
@@ -112,9 +73,9 @@ const registerValidation = [
     .withMessage('유효한 이메일을 입력해주세요'),
   body('password')
     .isLength({ min: 8 })
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/)
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
     .withMessage(
-      '비밀번호는 최소 8자이며, 대문자, 소문자, 숫자, 특수문자를 포함해야 합니다'
+      '비밀번호는 최소 8자이며, 대문자, 소문자, 숫자를 포함해야 합니다'
     ),
 ];
 
@@ -123,6 +84,10 @@ const refreshTokenValidation = [
 ];
 
 // ===== 헬퍼 함수 =====
+const findUserByEmail = (email: string): User | undefined => {
+  return mockUsers.find(user => user.email === email && user.isActive);
+};
+
 const checkValidationErrors = (req: Request): void => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -137,7 +102,7 @@ const checkValidationErrors = (req: Request): void => {
 
 /**
  * @route POST /auth/login
- * @desc 사용자 로그인 - User Service로 프록시
+ * @desc 사용자 로그인
  */
 router.post(
   '/login',
@@ -145,57 +110,91 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     checkValidationErrors(req);
 
-    try {
-      logger.info('Proxying login request to User Service', {
-        userServiceUrl: USER_SERVICE_URL,
-        requestId: req.id,
-      });
+    const { email, password } = req.body;
 
-      const response = await axios.post(
-        `${USER_SERVICE_URL}/api/users/login`,
-        req.body,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Request-ID': req.id,
-          },
-          timeout: 10000, // 10초 타임아웃
-        }
-      );
+    // 사용자 찾기
+    const user = findUserByEmail(email);
+    if (!user) {
+      logger.warn('Login attempt with invalid email', { email, ip: req.ip });
 
-      logger.info('Login request successful', {
-        userId: response.data?.data?.user?.id,
-        requestId: req.id,
-      });
+      const response: ApiResponse = {
+        success: false,
+        data: null,
+        error: '이메일 또는 비밀번호가 올바르지 않습니다',
+        timestamp: new Date().toISOString(),
+        requestId: (req as any).id,
+      };
 
-      res.status(response.status).json(response.data);
-    } catch (error: unknown) {
-      logger.error('Login proxy error:', error);
-
-      if (isAxiosError(error) && error.response) {
-        // User Service에서 온 에러 응답 그대로 전달
-        res
-          .status(error.response.status || HTTP_STATUS.INTERNAL_SERVER_ERROR)
-          .json(error.response.data);
-      } else {
-        // 연결 실패 등의 경우
-        const response: ApiResponse = {
-          success: false,
-          data: null,
-          error:
-            'User Service에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.',
-          timestamp: new Date().toISOString(),
-          requestId: req.id,
-        };
-        res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json(response);
-      }
+      return res.status(HTTP_STATUS.UNAUTHORIZED).json(response);
     }
+
+    // 비밀번호 확인 (Mock - 실제로는 bcrypt.compare 사용)
+    const storedPassword = mockPasswords[email];
+    if (!storedPassword) {
+      logger.error('No password found for user', { email, userId: user.id });
+
+      const response: ApiResponse = {
+        success: false,
+        data: null,
+        error: '로그인 처리 중 오류가 발생했습니다',
+        timestamp: new Date().toISOString(),
+        requestId: (req as any).id,
+      };
+
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json(response);
+    }
+
+    // 개발용 간단 비밀번호 체크 (실제로는 bcrypt 사용)
+    const isValidPassword =
+      password === 'admin123' || password === 'customer123';
+    if (!isValidPassword) {
+      logger.warn('Login attempt with invalid password', {
+        email,
+        userId: user.id,
+        ip: req.ip,
+      });
+
+      const response: ApiResponse = {
+        success: false,
+        data: null,
+        error: '이메일 또는 비밀번호가 올바르지 않습니다',
+        timestamp: new Date().toISOString(),
+        requestId: (req as any).id,
+      };
+
+      return res.status(HTTP_STATUS.UNAUTHORIZED).json(response);
+    }
+
+    // 토큰 생성
+    const tokens = generateTokenPair(user);
+
+    // 리프레시 토큰 저장
+    refreshTokenStore.add(tokens.refreshToken);
+
+    logger.info('User logged in successfully', {
+      userId: user.id,
+      email: user.email,
+      ip: req.ip,
+    });
+
+    const response: ApiResponse<{ user: User; tokens: TokenPair }> = {
+      success: true,
+      data: {
+        user,
+        tokens,
+      },
+      message: '로그인 성공',
+      timestamp: new Date().toISOString(),
+      requestId: (req as any).id,
+    };
+
+    res.status(HTTP_STATUS.OK).json(response);
   })
 );
 
 /**
  * @route POST /auth/register
- * @desc 사용자 회원가입 - User Service로 프록시
+ * @desc 사용자 회원가입 (Mock)
  */
 router.post(
   '/register',
@@ -203,57 +202,72 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     checkValidationErrors(req);
 
-    try {
-      logger.info('Proxying register request to User Service', {
-        userServiceUrl: USER_SERVICE_URL,
-        requestId: req.id,
+    const { name, email, password } = req.body;
+
+    // 이메일 중복 확인
+    const existingUser = findUserByEmail(email);
+    if (existingUser) {
+      logger.warn('Registration attempt with existing email', {
+        email,
+        ip: req.ip,
       });
 
-      const response = await axios.post(
-        `${USER_SERVICE_URL}/api/users/register`,
-        req.body,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Request-ID': req.id,
-          },
-          timeout: 15000, // 15초 타임아웃 (회원가입은 시간이 더 걸릴 수 있음)
-        }
-      );
+      const response: ApiResponse = {
+        success: false,
+        data: null,
+        error: '이미 존재하는 이메일입니다',
+        timestamp: new Date().toISOString(),
+        requestId: (req as any).id,
+      };
 
-      logger.info('Register request successful', {
-        userId: response.data?.data?.user?.id,
-        requestId: req.id,
-      });
-
-      res.status(response.status).json(response.data);
-    } catch (error: unknown) {
-      logger.error('Register proxy error:', error);
-
-      if (isAxiosError(error) && error.response) {
-        // User Service에서 온 에러 응답 그대로 전달
-        res
-          .status(error.response.status || HTTP_STATUS.INTERNAL_SERVER_ERROR)
-          .json(error.response.data);
-      } else {
-        // 연결 실패 등의 경우
-        const response: ApiResponse = {
-          success: false,
-          data: null,
-          error:
-            'User Service에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.',
-          timestamp: new Date().toISOString(),
-          requestId: req.id,
-        };
-        res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json(response);
-      }
+      return res.status(HTTP_STATUS.CONFLICT).json(response);
     }
+
+    // 새 사용자 생성 (Mock)
+    const newUser: User = {
+      id: `user-${Date.now()}`,
+      email,
+      name,
+      role: UserRole.CUSTOMER,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    // Mock 데이터에 추가
+    mockUsers.push(newUser);
+    mockPasswords[email] = password; // 실제로는 해시해서 저장
+
+    // 토큰 생성
+    const tokens = generateTokenPair(newUser);
+
+    // 리프레시 토큰 저장
+    refreshTokenStore.add(tokens.refreshToken);
+
+    logger.info('User registered successfully', {
+      userId: newUser.id,
+      email: newUser.email,
+      ip: req.ip,
+    });
+
+    const response: ApiResponse<{ user: User; tokens: TokenPair }> = {
+      success: true,
+      data: {
+        user: newUser,
+        tokens,
+      },
+      message: '회원가입 성공',
+      timestamp: new Date().toISOString(),
+      requestId: (req as any).id,
+    };
+
+    res.status(HTTP_STATUS.CREATED).json(response);
   })
 );
 
 /**
  * @route POST /auth/refresh
- * @desc 토큰 갱신 - User Service로 프록시
+ * @desc 토큰 갱신
  */
 router.post(
   '/refresh',
@@ -261,405 +275,131 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     checkValidationErrors(req);
 
-    try {
-      logger.info('Proxying refresh request to User Service', {
-        userServiceUrl: USER_SERVICE_URL,
-        requestId: req.id,
+    const { refreshToken } = req.body;
+
+    // 리프레시 토큰 유효성 확인
+    if (!refreshTokenStore.has(refreshToken)) {
+      logger.warn('Invalid refresh token used', {
+        token: refreshToken.substring(0, 20) + '...',
+        ip: req.ip,
       });
 
-      const response = await axios.post(
-        `${USER_SERVICE_URL}/api/users/refresh`,
-        req.body,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Request-ID': req.id,
-          },
-          timeout: 10000,
-        }
-      );
+      const response: ApiResponse = {
+        success: false,
+        data: null,
+        error: '유효하지 않은 리프레시 토큰입니다',
+        timestamp: new Date().toISOString(),
+        requestId: (req as any).id,
+      };
 
-      res.status(response.status).json(response.data);
-    } catch (error: unknown) {
-      logger.error('Refresh proxy error:', error);
-
-      if (isAxiosError(error) && error.response) {
-        res
-          .status(error.response.status || HTTP_STATUS.INTERNAL_SERVER_ERROR)
-          .json(error.response.data);
-      } else {
-        const response: ApiResponse = {
-          success: false,
-          data: null,
-          error:
-            'User Service에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.',
-          timestamp: new Date().toISOString(),
-          requestId: req.id,
-        };
-        res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json(response);
-      }
+      return res.status(HTTP_STATUS.UNAUTHORIZED).json(response);
     }
+
+    // 토큰 검증 및 페이로드 추출
+    const payload = verifyRefreshToken(refreshToken);
+
+    // 사용자 정보 조회
+    const user = mockUsers.find(u => u.id === payload.userId);
+    if (!user || !user.isActive) {
+      logger.warn('Refresh token for inactive/missing user', {
+        userId: payload.userId,
+      });
+
+      // 무효한 토큰 제거
+      refreshTokenStore.delete(refreshToken);
+
+      const response: ApiResponse = {
+        success: false,
+        data: null,
+        error: '사용자를 찾을 수 없습니다',
+        timestamp: new Date().toISOString(),
+        requestId: (req as any).id,
+      };
+
+      return res.status(HTTP_STATUS.UNAUTHORIZED).json(response);
+    }
+
+    // 새 토큰 생성
+    const newTokens = generateTokenPair(user);
+
+    // 기존 리프레시 토큰 제거하고 새 토큰 저장
+    refreshTokenStore.delete(refreshToken);
+    refreshTokenStore.add(newTokens.refreshToken);
+
+    logger.info('Tokens refreshed successfully', { userId: user.id });
+
+    const response: ApiResponse<TokenPair> = {
+      success: true,
+      data: newTokens,
+      message: '토큰 갱신 성공',
+      timestamp: new Date().toISOString(),
+      requestId: (req as any).id,
+    };
+
+    res.status(HTTP_STATUS.OK).json(response);
   })
 );
 
 /**
  * @route POST /auth/logout
- * @desc 로그아웃 - User Service로 프록시
+ * @desc 로그아웃
  */
 router.post(
   '/logout',
   asyncHandler(async (req: Request, res: Response) => {
-    try {
-      logger.info('Proxying logout request to User Service', {
-        userServiceUrl: USER_SERVICE_URL,
-        requestId: req.id,
-      });
+    const { refreshToken } = req.body;
 
-      const response = await axios.post(
-        `${USER_SERVICE_URL}/api/users/logout`,
-        req.body,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Request-ID': req.id,
-            Authorization: req.headers.authorization, // 인증 헤더 전달
-          },
-          timeout: 10000,
-        }
-      );
-
-      res.status(response.status).json(response.data);
-    } catch (error: unknown) {
-      logger.error('Logout proxy error:', error);
-
-      if (isAxiosError(error) && error.response) {
-        res
-          .status(error.response.status || HTTP_STATUS.INTERNAL_SERVER_ERROR)
-          .json(error.response.data);
-      } else {
-        const response: ApiResponse = {
-          success: false,
-          data: null,
-          error:
-            'User Service에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.',
-          timestamp: new Date().toISOString(),
-          requestId: req.id,
-        };
-        res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json(response);
-      }
+    if (refreshToken && refreshTokenStore.has(refreshToken)) {
+      refreshTokenStore.delete(refreshToken);
+      logger.info('User logged out', { ip: req.ip });
     }
+
+    const response: ApiResponse = {
+      success: true,
+      data: null,
+      message: '로그아웃 성공',
+      timestamp: new Date().toISOString(),
+      requestId: (req as any).id,
+    };
+
+    res.status(HTTP_STATUS.OK).json(response);
   })
 );
 
 /**
- * @route GET /auth/profile
- * @desc 현재 사용자 정보 조회 - User Service로 프록시
+ * @route GET /auth/me
+ * @desc 현재 사용자 정보 조회 (인증 필요)
  */
 router.get(
-  '/profile',
+  '/me',
   asyncHandler(async (req: Request, res: Response) => {
-    try {
-      logger.info('Proxying profile request to User Service', {
-        userServiceUrl: USER_SERVICE_URL,
-        requestId: req.id,
-      });
+    // 실제로는 인증 미들웨어에서 처리하지만, 여기서는 간단히 구현
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      const response: ApiResponse = {
+        success: false,
+        data: null,
+        error: '인증이 필요합니다',
+        timestamp: new Date().toISOString(),
+        requestId: (req as any).id,
+      };
 
-      const response = await axios.get(
-        `${USER_SERVICE_URL}/api/users/profile`,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Request-ID': req.id,
-            Authorization: req.headers.authorization, // 인증 헤더 전달
-          },
-          timeout: 10000,
-        }
-      );
-
-      res.status(response.status).json(response.data);
-    } catch (error: unknown) {
-      logger.error('Profile proxy error:', error);
-
-      if (isAxiosError(error) && error.response) {
-        res
-          .status(error.response.status || HTTP_STATUS.INTERNAL_SERVER_ERROR)
-          .json(error.response.data);
-      } else {
-        const response: ApiResponse = {
-          success: false,
-          data: null,
-          error:
-            'User Service에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.',
-          timestamp: new Date().toISOString(),
-          requestId: req.id,
-        };
-        res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json(response);
-      }
+      return res.status(HTTP_STATUS.UNAUTHORIZED).json(response);
     }
+
+    // Mock 사용자 반환 (실제로는 토큰에서 사용자 ID 추출 후 DB 조회)
+    const mockCurrentUser = mockUsers[0]; // 간단히 첫 번째 사용자 반환
+
+    const response: ApiResponse<User> = {
+      success: true,
+      data: mockCurrentUser,
+      message: '사용자 정보 조회 성공',
+      timestamp: new Date().toISOString(),
+      requestId: (req as any).id,
+    };
+
+    res.status(HTTP_STATUS.OK).json(response);
   })
 );
-
-/**
- * @route PUT /auth/profile
- * @desc 사용자 정보 업데이트 - User Service로 프록시
- */
-router.put(
-  '/profile',
-  asyncHandler(async (req: Request, res: Response) => {
-    try {
-      logger.info('Proxying profile update request to User Service', {
-        userServiceUrl: USER_SERVICE_URL,
-        requestId: req.id,
-      });
-
-      const response = await axios.put(
-        `${USER_SERVICE_URL}/api/users/profile`,
-        req.body,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Request-ID': req.id,
-            Authorization: req.headers.authorization, // 인증 헤더 전달
-          },
-          timeout: 15000,
-        }
-      );
-
-      res.status(response.status).json(response.data);
-    } catch (error: unknown) {
-      logger.error('Profile update proxy error:', error);
-
-      if (isAxiosError(error) && error.response) {
-        res
-          .status(error.response.status || HTTP_STATUS.INTERNAL_SERVER_ERROR)
-          .json(error.response.data);
-      } else {
-        const response: ApiResponse = {
-          success: false,
-          data: null,
-          error:
-            'User Service에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.',
-          timestamp: new Date().toISOString(),
-          requestId: req.id,
-        };
-        res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json(response);
-      }
-    }
-  })
-);
-
-/**
- * @route DELETE /auth/profile
- * @desc 계정 비활성화 - User Service로 프록시
- */
-router.delete(
-  '/profile',
-  asyncHandler(async (req: Request, res: Response) => {
-    try {
-      logger.info('Proxying account deactivation request to User Service', {
-        userServiceUrl: USER_SERVICE_URL,
-        requestId: req.id,
-      });
-
-      const response = await axios.delete(
-        `${USER_SERVICE_URL}/api/users/profile`,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Request-ID': req.id,
-            Authorization: req.headers.authorization, // 인증 헤더 전달
-          },
-          timeout: 15000,
-        }
-      );
-
-      res.status(response.status).json(response.data);
-    } catch (error: unknown) {
-      logger.error('Account deactivation proxy error:', error);
-
-      if (isAxiosError(error) && error.response) {
-        res
-          .status(error.response.status || HTTP_STATUS.INTERNAL_SERVER_ERROR)
-          .json(error.response.data);
-      } else {
-        const response: ApiResponse = {
-          success: false,
-          data: null,
-          error:
-            'User Service에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.',
-          timestamp: new Date().toISOString(),
-          requestId: req.id,
-        };
-        res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json(response);
-      }
-    }
-  })
-);
-
-/**
- * @route POST /auth/phone-verification/request
- * @desc 휴대폰 인증 요청 - User Service로 프록시
- */
-router.post(
-  '/phone-verification/request',
-  asyncHandler(async (req: Request, res: Response) => {
-    try {
-      logger.info('📱 [Phone API] 인증 요청 프록시 시작', {
-        userServiceUrl: USER_SERVICE_URL,
-        requestId: req.id,
-        phoneNumber: req.body.phoneNumber
-          ? '***' + req.body.phoneNumber.slice(-4)
-          : 'none',
-      });
-
-      const response = await axios.post(
-        `${USER_SERVICE_URL}/api/users/phone-verification/request`,
-        req.body,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Request-ID': req.id,
-          },
-          timeout: 15000,
-        }
-      );
-
-      logger.info('✅ [Phone API] User Service 응답 성공', {
-        status: response.status,
-        requestId: req.id,
-      });
-
-      res.status(response.status).json(response.data);
-    } catch (error: unknown) {
-      logger.error('❌ [Phone API] 프록시 에러:', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        userServiceUrl: USER_SERVICE_URL,
-        requestId: req.id,
-      });
-
-      if (isAxiosError(error) && error.response) {
-        res
-          .status(error.response.status || HTTP_STATUS.INTERNAL_SERVER_ERROR)
-          .json(error.response.data);
-      } else {
-        const response: ApiResponse = {
-          success: false,
-          data: null,
-          error:
-            'User Service에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.',
-          timestamp: new Date().toISOString(),
-          requestId: req.id,
-        };
-        res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json(response);
-      }
-    }
-  })
-);
-
-/**
- * @route GET /auth/phone-verification/status/:sessionId
- * @desc 휴대폰 인증 상태 확인 - User Service로 프록시
- */
-router.get(
-  '/phone-verification/status/:sessionId',
-  asyncHandler(async (req: Request, res: Response) => {
-    try {
-      logger.info('Proxying phone verification status to User Service', {
-        userServiceUrl: USER_SERVICE_URL,
-        sessionId: req.params.sessionId,
-        requestId: req.id,
-      });
-
-      const response = await axios.get(
-        `${USER_SERVICE_URL}/api/users/phone-verification/status/${req.params.sessionId}`,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Request-ID': req.id,
-          },
-          timeout: 10000,
-        }
-      );
-
-      res.status(response.status).json(response.data);
-    } catch (error: unknown) {
-      logger.error('Phone verification status proxy error:', error);
-
-      if (isAxiosError(error) && error.response) {
-        res
-          .status(error.response.status || HTTP_STATUS.INTERNAL_SERVER_ERROR)
-          .json(error.response.data);
-      } else {
-        const response: ApiResponse = {
-          success: false,
-          data: null,
-          error:
-            'User Service에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.',
-          timestamp: new Date().toISOString(),
-          requestId: req.id,
-        };
-        res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json(response);
-      }
-    }
-  })
-);
-
-/**
- * @route POST /auth/phone-verification/complete/:sessionId
- * @desc 휴대폰 인증 완료 - User Service로 프록시
- */
-router.post(
-  '/phone-verification/complete/:sessionId',
-  asyncHandler(async (req: Request, res: Response) => {
-    try {
-      logger.info('Proxying phone verification complete to User Service', {
-        userServiceUrl: USER_SERVICE_URL,
-        sessionId: req.params.sessionId,
-        requestId: req.id,
-      });
-
-      const response = await axios.post(
-        `${USER_SERVICE_URL}/api/users/phone-verification/complete/${req.params.sessionId}`,
-        req.body,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Request-ID': req.id,
-          },
-          timeout: 15000,
-        }
-      );
-
-      res.status(response.status).json(response.data);
-    } catch (error: unknown) {
-      logger.error('Phone verification complete proxy error:', error);
-
-      if (isAxiosError(error) && error.response) {
-        res
-          .status(error.response.status || HTTP_STATUS.INTERNAL_SERVER_ERROR)
-          .json(error.response.data);
-      } else {
-        const response: ApiResponse = {
-          success: false,
-          data: null,
-          error:
-            'User Service에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.',
-          timestamp: new Date().toISOString(),
-          requestId: req.id,
-        };
-        res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json(response);
-      }
-    }
-  })
-);
-
-// 테스트 라우트 추가
-router.get('/phone-test', (req: Request, res: Response) => {
-  res.json({
-    success: true,
-    message: 'Phone verification 라우트 테스트 성공',
-    timestamp: new Date().toISOString(),
-  });
-});
 
 export { router as authRoutes };

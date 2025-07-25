@@ -1,18 +1,17 @@
 // ========================================
-// Product Entity - Domain 계층 (단순화된 버전)
+// Product Entity - Domain 계층
 // src/entities/Product.ts
 // ========================================
 
 import { v4 as uuidv4 } from "uuid";
 
 /**
- * Product 생성 데이터 인터페이스 (단순화)
+ * Product 생성 데이터 인터페이스
  */
 export interface CreateProductData {
   name: string;
   description: string;
-  originalPrice: number; // 원가 (필수)
-  discountPercentage?: number; // 할인율 (0-100, 선택)
+  price: number;
   categoryId: string;
   brand: string;
   sku: string;
@@ -23,33 +22,26 @@ export interface CreateProductData {
     depth: number;
   };
   tags?: string[];
-  imageUrls?: string[];
-  thumbnailUrl?: string;
+  discountPrice?: number;
 }
 
 /**
- * Product 복원 데이터 인터페이스 (단순화)
+ * Product 복원 데이터 인터페이스
  */
 export interface RestoreProductData extends CreateProductData {
   id: string;
-  price: number; // 계산된 할인가
-  rating: number;
-  reviewCount: number;
   isActive: boolean;
-  isFeatured: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
 
 /**
- * Product 업데이트 데이터 인터페이스 (단순화)
+ * Product 업데이트 데이터 인터페이스
  */
 export interface UpdateProductData {
   name?: string;
   description?: string;
-  price?: number; // 판매가 수정
-  originalPrice?: number; // 원가 수정
-  discountPercentage?: number; // 할인율 수정 (0-100)
+  price?: number;
   brand?: string;
   weight?: number;
   dimensions?: {
@@ -58,54 +50,43 @@ export interface UpdateProductData {
     depth: number;
   };
   tags?: string[];
-  imageUrls?: string[];
-  thumbnailUrl?: string;
 }
 
 /**
- * Product 요약 정보 인터페이스 (단순화)
+ * Product 요약 정보 인터페이스
  */
 export interface ProductSummary {
   id: string;
   name: string;
   price: number;
-  originalPrice: number | undefined;
+  effectivePrice: number;
   brand: string;
-  rating: number;
-  reviewCount: number;
   isActive: boolean;
-  isFeatured: boolean;
   hasDiscount: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
 
 /**
- * Product Entity - 상품 도메인 객체 (단순화된 버전)
+ * Product Entity - 상품 도메인 객체
  *
  * 책임:
  * 1. 상품 정보 관리 (이름, 설명, 가격, 브랜드 등)
- * 2. 상품 상태 관리 (활성/비활성, 추천 여부)
- * 3. 할인 가격 관리 (originalPrice 기반)
- * 4. 평점 및 리뷰 정보 관리
- * 5. 이미지 정보 관리
- * 6. 비즈니스 규칙 검증
+ * 2. 상품 상태 관리 (활성/비활성)
+ * 3. 할인 가격 관리
+ * 4. 상품 검색 및 필터링 지원
+ * 5. 비즈니스 규칙 검증
+ * 6. 도메인 로직 수행
  */
 export class Product {
   private constructor(
     private readonly id: string,
     private name: string,
     private description: string,
-    private price: number, // 계산된 할인가
-    private originalPrice: number, // 원가
-    private discountPercentage: number, // 할인율 (0-100)
+    private price: number,
     private readonly categoryId: string,
     private brand: string,
     private readonly sku: string,
-    private rating: number = 0,
-    private reviewCount: number = 0,
-    private imageUrls: string[] = [],
-    private thumbnailUrl: string | undefined,
     private weight?: number,
     private dimensions?: {
       width: number;
@@ -114,7 +95,7 @@ export class Product {
     },
     private tags: string[] = [],
     private _isActive: boolean = true,
-    private _isFeatured: boolean = false,
+    private discountPrice?: number,
     private readonly createdAt: Date = new Date(),
     private updatedAt: Date = new Date()
   ) {}
@@ -124,37 +105,27 @@ export class Product {
   // ========================================
 
   /**
-   * 새로운 Product 생성 (단순화된 버전)
+   * 새로운 Product 생성
    */
   static create(data: CreateProductData): Product {
     // 1. 입력 데이터 검증
     Product.validateCreateData(data);
 
-    // 2. 할인율과 할인가 계산
-    const discountPercentage = data.discountPercentage || 0;
-    const calculatedPrice = Math.round(data.originalPrice * (1 - discountPercentage / 100) * 100) / 100;
-
-    // 3. Product 인스턴스 생성
+    // 2. Product 인스턴스 생성
     const now = new Date();
     return new Product(
       uuidv4(),
       data.name.trim(),
       data.description.trim(),
-      calculatedPrice, // 계산된 할인가
-      data.originalPrice, // 원가
-      discountPercentage, // 할인율
+      data.price,
       data.categoryId.trim(),
       data.brand.trim(),
       data.sku.trim().toUpperCase(),
-      0, // 초기 평점
-      0, // 초기 리뷰 수
-      data.imageUrls || [],
-      data.thumbnailUrl,
       data.weight,
       data.dimensions,
       data.tags || [],
-      true, // 기본적으로 활성 상태
-      false, // 기본적으로 추천 상품 아님
+      true, // 기본적으로 활성 상태 (_isActive)
+      data.discountPrice,
       now,
       now
     );
@@ -173,21 +144,15 @@ export class Product {
       data.id,
       data.name,
       data.description,
-      data.price, // 계산된 할인가
-      data.originalPrice, // 원가
-      data.discountPercentage || 0, // 할인율
+      data.price,
       data.categoryId,
       data.brand,
       data.sku,
-      data.rating,
-      data.reviewCount,
-      data.imageUrls || [],
-      data.thumbnailUrl,
       data.weight,
       data.dimensions,
       data.tags || [],
       data.isActive,
-      data.isFeatured,
+      data.discountPrice,
       data.createdAt,
       data.updatedAt
     );
@@ -202,20 +167,13 @@ export class Product {
     if (!data.name || data.name.trim().length === 0) {
       throw new Error("상품명은 필수입니다");
     }
-    if (data.name.trim().length > 300) {
-      throw new Error("상품명은 300자를 초과할 수 없습니다");
+    if (data.name.trim().length > 200) {
+      throw new Error("상품명은 200자를 초과할 수 없습니다");
     }
 
-    // 원가 검증
-    if (!data.originalPrice || data.originalPrice <= 0) {
-      throw new Error("원가는 0보다 커야 합니다");
-    }
-
-    // 할인율 검증
-    if (data.discountPercentage !== undefined) {
-      if (data.discountPercentage < 0 || data.discountPercentage > 100) {
-        throw new Error("할인율은 0-100 범위여야 합니다");
-      }
+    // 가격 검증
+    if (!data.price || data.price <= 0) {
+      throw new Error("가격은 0보다 커야 합니다");
     }
 
     // SKU 검증 (영문, 숫자, 하이픈만 허용)
@@ -296,33 +254,8 @@ export class Product {
     return this._isActive;
   }
 
-  getOriginalPrice(): number {
-    return this.originalPrice;
-  }
-
-  getDiscountPercentage(): number {
-    return this.discountPercentage;
-  }
-
-
-  getRating(): number {
-    return this.rating;
-  }
-
-  getReviewCount(): number {
-    return this.reviewCount;
-  }
-
-  getImageUrls(): string[] {
-    return [...this.imageUrls]; // 복사본 반환
-  }
-
-  getThumbnailUrl(): string | undefined {
-    return this.thumbnailUrl;
-  }
-
-  isFeatured(): boolean {
-    return this._isFeatured;
+  getDiscountPrice(): number | undefined {
+    return this.discountPrice;
   }
 
   getCreatedAt(): Date {
@@ -338,41 +271,17 @@ export class Product {
   // ========================================
 
   /**
-   * 할인 여부 확인 (원가가 현재가보다 높으면 할인)
+   * 실제 판매 가격 반환 (할인가가 있으면 할인가, 없으면 정가)
+   */
+  getEffectivePrice(): number {
+    return this.discountPrice ?? this.price;
+  }
+
+  /**
+   * 할인 여부 확인
    */
   hasDiscount(): boolean {
-    return this.originalPrice !== undefined && this.originalPrice > this.price;
-  }
-
-  /**
-   * 할인율 계산 (퍼센트)
-   */
-  getDiscountRate(): number {
-    if (!this.hasDiscount() || !this.originalPrice) {
-      return 0;
-    }
-    return Math.round(((this.originalPrice - this.price) / this.originalPrice) * 100);
-  }
-
-  /**
-   * 할인 금액 계산
-   */
-  getDiscountAmount(): number {
-    if (!this.hasDiscount() || !this.originalPrice) {
-      return 0;
-    }
-    return this.originalPrice - this.price;
-  }
-
-  /**
-   * 할인된 가격 반환 (현재 판매가격과 동일)
-   */
-  getDiscountPrice(): number | undefined {
-    // 할인이 있는 경우 현재 price가 할인된 가격
-    if (this.hasDiscount()) {
-      return this.price;
-    }
-    return undefined;
+    return this.discountPrice !== undefined && this.discountPrice < this.price;
   }
 
   /**
@@ -392,15 +301,15 @@ export class Product {
   }
 
   /**
-   * 상품 정보 업데이트 (단순화된 버전)
+   * 상품 정보 업데이트
    */
   updateDetails(data: UpdateProductData): void {
     if (data.name !== undefined) {
       if (data.name.trim().length === 0) {
         throw new Error("상품명은 필수입니다");
       }
-      if (data.name.trim().length > 300) {
-        throw new Error("상품명은 300자를 초과할 수 없습니다");
+      if (data.name.trim().length > 200) {
+        throw new Error("상품명은 200자를 초과할 수 없습니다");
       }
       this.name = data.name.trim();
     }
@@ -417,13 +326,6 @@ export class Product {
         throw new Error("가격은 0보다 커야 합니다");
       }
       this.price = data.price;
-    }
-
-    if (data.originalPrice !== undefined) {
-      if (data.originalPrice < this.price) {
-        throw new Error("원래 가격은 현재 가격보다 크거나 같아야 합니다");
-      }
-      this.originalPrice = data.originalPrice;
     }
 
     if (data.brand !== undefined) {
@@ -448,64 +350,30 @@ export class Product {
       this.tags = [...data.tags];
     }
 
-    if (data.imageUrls !== undefined) {
-      this.imageUrls = [...data.imageUrls];
-    }
-
-    if (data.thumbnailUrl !== undefined) {
-      this.thumbnailUrl = data.thumbnailUrl;
-    }
-
     this.updatedAt = new Date();
   }
 
   /**
-   * 추천 상품 설정
+   * 할인 가격 설정
    */
-  setFeatured(isFeatured: boolean): void {
-    this._isFeatured = isFeatured;
+  setDiscountPrice(discountPrice: number): void {
+    if (discountPrice >= this.price) {
+      throw new Error("할인 가격은 원가보다 낮아야 합니다");
+    }
+    if (discountPrice <= 0) {
+      throw new Error("할인 가격은 0보다 커야 합니다");
+    }
+
+    this.discountPrice = discountPrice;
     this.updatedAt = new Date();
   }
 
   /**
-   * 평점 업데이트 (리뷰 시스템에서 호출)
+   * 할인 제거
    */
-  updateRating(newRating: number, newReviewCount: number): void {
-    if (newRating < 0 || newRating > 5) {
-      throw new Error("평점은 0-5 사이여야 합니다");
-    }
-    if (newReviewCount < 0) {
-      throw new Error("리뷰 수는 0 이상이어야 합니다");
-    }
-
-    this.rating = newRating;
-    this.reviewCount = newReviewCount;
+  removeDiscount(): void {
+    this.discountPrice = undefined;
     this.updatedAt = new Date();
-  }
-
-  /**
-   * 이미지 추가
-   */
-  addImage(imageUrl: string): void {
-    if (!imageUrl || imageUrl.trim().length === 0) {
-      throw new Error("이미지 URL은 필수입니다");
-    }
-
-    if (!this.imageUrls.includes(imageUrl)) {
-      this.imageUrls.push(imageUrl);
-      this.updatedAt = new Date();
-    }
-  }
-
-  /**
-   * 이미지 제거
-   */
-  removeImage(imageUrl: string): void {
-    const index = this.imageUrls.indexOf(imageUrl);
-    if (index > -1) {
-      this.imageUrls.splice(index, 1);
-      this.updatedAt = new Date();
-    }
   }
 
   // ========================================
@@ -531,7 +399,8 @@ export class Product {
    * 가격 범위 필터링
    */
   isInPriceRange(minPrice: number, maxPrice: number): boolean {
-    return this.price >= minPrice && this.price <= maxPrice;
+    const effectivePrice = this.getEffectivePrice();
+    return effectivePrice >= minPrice && effectivePrice <= maxPrice;
   }
 
   /**
@@ -539,13 +408,6 @@ export class Product {
    */
   matchesBrand(brand: string): boolean {
     return this.brand.toLowerCase() === brand.toLowerCase();
-  }
-
-  /**
-   * 평점 범위 필터링
-   */
-  isInRatingRange(minRating: number): boolean {
-    return this.rating >= minRating;
   }
 
   // ========================================
@@ -560,36 +422,6 @@ export class Product {
   }
 
   /**
-   * 인기 상품인지 확인 (평점 4.0 이상, 리뷰 10개 이상)
-   */
-  isPopular(): boolean {
-    return this.rating >= 4.0 && this.reviewCount >= 10;
-  }
-
-  /**
-   * 고평점 상품인지 확인 (평점 4.5 이상)
-   */
-  isHighRated(): boolean {
-    return this.rating >= 4.5;
-  }
-
-  /**
-   * 신상품인지 확인 (30일 이내)
-   */
-  isNewProduct(): boolean {
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    return this.createdAt > thirtyDaysAgo;
-  }
-
-  /**
-   * 메인 이미지 URL 반환
-   */
-  getMainImageUrl(): string | undefined {
-    return this.thumbnailUrl || (this.imageUrls.length > 0 ? this.imageUrls[0] : undefined);
-  }
-
-  /**
    * SEO 친화적 슬러그 생성
    */
   generateSlug(): string {
@@ -601,19 +433,16 @@ export class Product {
   }
 
   /**
-   * 상품 요약 정보 반환 (단순화된 버전)
+   * 상품 요약 정보 반환
    */
   getSummary(): ProductSummary {
     return {
       id: this.id,
       name: this.name,
       price: this.price,
-      originalPrice: this.originalPrice ?? undefined,
+      effectivePrice: this.getEffectivePrice(),
       brand: this.brand,
-      rating: this.rating,
-      reviewCount: this.reviewCount,
       isActive: this._isActive,
-      isFeatured: this._isFeatured,
       hasDiscount: this.hasDiscount(),
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
@@ -635,7 +464,6 @@ export class Product {
       categoryId: this.categoryId,
       price: this.price,
       brand: this.brand,
-      isFeatured: this._isFeatured,
       createdAt: this.createdAt,
     };
   }
@@ -649,39 +477,7 @@ export class Product {
       productId: this.id,
       productName: this.name,
       price: this.price,
-      originalPrice: this.originalPrice,
-      rating: this.rating,
-      reviewCount: this.reviewCount,
-      hasDiscount: this.hasDiscount(),
-      updatedAt: this.updatedAt,
-    };
-  }
-
-  /**
-   * 상품이 추천 상품으로 설정될 때 발생하는 도메인 이벤트
-   */
-  getFeaturedEvent() {
-    return {
-      type: "ProductFeatured",
-      productId: this.id,
-      productName: this.name,
-      isFeatured: this._isFeatured,
-      updatedAt: this.updatedAt,
-    };
-  }
-
-  /**
-   * 상품 평점이 업데이트될 때 발생하는 도메인 이벤트
-   */
-  getRatingUpdatedEvent() {
-    return {
-      type: "ProductRatingUpdated",
-      productId: this.id,
-      productName: this.name,
-      rating: this.rating,
-      reviewCount: this.reviewCount,
-      isPopular: this.isPopular(),
-      isHighRated: this.isHighRated(),
+      effectivePrice: this.getEffectivePrice(),
       updatedAt: this.updatedAt,
     };
   }

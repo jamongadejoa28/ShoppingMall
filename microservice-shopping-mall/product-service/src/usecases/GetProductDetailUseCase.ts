@@ -3,7 +3,10 @@ import { injectable, inject } from "inversify";
 import { Product } from "../entities/Product";
 import { Category } from "../entities/Category";
 import { Inventory } from "../entities/Inventory";
-import { ProductRepository, CategoryRepository, InventoryRepository, CacheService } from "./types";
+import { ProductRepository } from "../repositories/ProductRepository";
+import { CategoryRepository } from "../repositories/CategoryRepository";
+import { InventoryRepository } from "../repositories/InventoryRepository";
+import { CacheService } from "../services/CacheService";
 import { DomainError } from "../shared/errors/DomainError";
 import { Result } from "../shared/types/Result";
 import { TYPES } from "../infrastructure/di/types";
@@ -13,9 +16,8 @@ export interface ProductDetailResponse {
   id: string;
   name: string;
   description: string;
-  price: number; // 실제 판매가 (할인가)
-  originalPrice?: number; // 원가 (할인이 있는 경우에만)
-  discountPercentage?: number; // 할인율
+  price: number;
+  discountPrice?: number; // optional로 변경
   sku: string;
   brand: string;
   tags: string[];
@@ -140,18 +142,17 @@ export class GetProductDetailUseCase {
     inventory: Inventory | null
   ): ProductDetailResponse {
     // 재고 정보 처리
-    const availableQuantity = inventory?.getAvailableQuantity() || 0;
     const inventoryInfo = inventory
       ? {
-          availableQuantity: availableQuantity,
+          availableQuantity: inventory.getAvailableQuantity(),
           reservedQuantity: inventory.getReservedQuantity(),
-          status: this.determineInventoryStatus(availableQuantity),
+          status: inventory.getStatus(),
           lowStockThreshold: inventory.getLowStockThreshold(),
         }
       : {
           availableQuantity: 0,
           reservedQuantity: 0,
-          status: this.determineInventoryStatus(0),
+          status: "out_of_stock",
           lowStockThreshold: 0,
         };
 
@@ -186,27 +187,12 @@ export class GetProductDetailUseCase {
       updatedAt: product.getUpdatedAt(),
     };
 
-    // 할인 로직: 할인이 있는 경우 originalPrice와 discountPercentage 필드 추가
-    if (product.hasDiscount()) {
-      response.originalPrice = product.getOriginalPrice(); // 원가
-      response.discountPercentage = product.getDiscountPercentage(); // 할인율
-      // response.price는 이미 할인된 가격 (DB에서 자동 계산됨)
+    // discountPrice가 존재하는 경우에만 추가
+    const discountPrice = product.getDiscountPrice();
+    if (discountPrice !== undefined) {
+      response.discountPrice = discountPrice;
     }
 
     return response;
-  }
-
-  /**
-   * 재고 수량에 따른 상태 결정
-   * 요구사항: 1-20: 거의 품절, 0: 품절, >20: 재고 충분
-   */
-  private determineInventoryStatus(availableQuantity: number): string {
-    if (availableQuantity === 0) {
-      return "out_of_stock"; // 품절
-    } else if (availableQuantity <= 20) {
-      return "low_stock"; // 거의 품절
-    } else {
-      return "sufficient"; // 재고 충분
-    }
   }
 }

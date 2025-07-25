@@ -20,7 +20,7 @@
     "format:check": "prettier --check \"src/**/*.{ts,js,json,md}\"",
     "type-check": "tsc --noEmit",
     "clean": "rimraf dist coverage",
-    "prebuild": "npm run clean && npm run type-check",
+    "prebuild": "npm run clean && npm run lint && npm run type-check",
     "prestart": "npm run build",
     "docker:build": "docker build -t api-gateway .",
     "docker:run": "docker run -p 3001:3001 api-gateway"
@@ -71,7 +71,7 @@
     "supertest": "^6.3.3",
     "ts-jest": "^29.1.1",
     "tsx": "^4.6.2",
-    "typescript": "~5.3.3"
+    "typescript": "^5.3.3"
   },
   "engines": {
     "node": ">=18.0.0",

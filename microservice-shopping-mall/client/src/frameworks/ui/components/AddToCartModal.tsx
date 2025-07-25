@@ -3,10 +3,10 @@
 // client/src/frameworks/ui/components/AddToCartModal.tsx
 // ========================================
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CartProduct } from '../../../types/cart-type/CartProduct';
-import { useCartSummary, useCartActions } from '../../state/cartStoreLocal';
+import { useCartSummary } from '../../state/cartStore';
 import { ROUTES } from '../../../shared/constants/routes';
 
 // ========================================
@@ -31,19 +31,7 @@ const AddToCartModal: React.FC<AddToCartModalProps> = ({
   addedQuantity,
 }) => {
   const navigate = useNavigate();
-  const { totalQuantity, totalPrice, itemCount, loading } = useCartSummary();
-  const { loadCart } = useCartActions();
-
-  // ========================================
-  // Effects
-  // ========================================
-
-  // 모달이 열릴 때 장바구니 데이터를 다시 로드
-  useEffect(() => {
-    if (isOpen) {
-      loadCart();
-    }
-  }, [isOpen, loadCart]);
+  const { totalQuantity, totalPrice, itemCount } = useCartSummary();
 
   // ========================================
   // 이벤트 핸들러
@@ -130,9 +118,9 @@ const AddToCartModal: React.FC<AddToCartModalProps> = ({
           <div className="flex items-start space-x-4">
             {/* 상품 이미지 */}
             <div className="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center flex-shrink-0">
-              {product.image_urls && product.image_urls.length > 0 ? (
+              {product.imageUrls && product.imageUrls.length > 0 ? (
                 <img
-                  src={product.image_urls[0]}
+                  src={product.imageUrls[0]}
                   alt={product.name}
                   className="w-full h-full object-cover rounded-lg"
                 />
@@ -177,47 +165,26 @@ const AddToCartModal: React.FC<AddToCartModalProps> = ({
             <h5 className="text-sm font-medium text-gray-900 mb-3">
               장바구니 요약
             </h5>
-            {loading ? (
-              <div className="space-y-2 animate-pulse">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">총 상품</span>
-                  <div className="h-4 bg-gray-300 rounded w-16"></div>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">총 수량</span>
-                  <div className="h-4 bg-gray-300 rounded w-12"></div>
-                </div>
-                <div className="border-t border-gray-200 pt-2 mt-2">
-                  <div className="flex justify-between">
-                    <span className="text-base font-medium text-gray-900">
-                      총 금액
-                    </span>
-                    <div className="h-5 bg-gray-300 rounded w-20"></div>
-                  </div>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">총 상품</span>
+                <span className="font-medium">{itemCount}개 품목</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">총 수량</span>
+                <span className="font-medium">{totalQuantity}개</span>
+              </div>
+              <div className="border-t border-gray-200 pt-2 mt-2">
+                <div className="flex justify-between">
+                  <span className="text-base font-medium text-gray-900">
+                    총 금액
+                  </span>
+                  <span className="text-base font-bold text-blue-600">
+                    {formatPrice(totalPrice)}
+                  </span>
                 </div>
               </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">총 상품</span>
-                  <span className="font-medium">{itemCount}개 품목</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">총 수량</span>
-                  <span className="font-medium">{totalQuantity}개</span>
-                </div>
-                <div className="border-t border-gray-200 pt-2 mt-2">
-                  <div className="flex justify-between">
-                    <span className="text-base font-medium text-gray-900">
-                      총 금액
-                    </span>
-                    <span className="text-base font-bold text-blue-600">
-                      {formatPrice(totalPrice)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
+            </div>
           </div>
 
           {/* 액션 버튼들 */}

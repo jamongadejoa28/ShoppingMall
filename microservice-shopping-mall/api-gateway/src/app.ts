@@ -1,6 +1,6 @@
 // api-gateway/src/app.ts
 
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Response, NextFunction } from 'express';
 import axios from 'axios';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -9,69 +9,20 @@ import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 import { v4 as uuidv4 } from 'uuid';
 
-// Define simple types locally
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-interface ApiResponse<T = any> {
-  success: boolean;
-  data?: T;
-  message?: string;
-  timestamp: string;
-  requestId?: string;
-  error?: string;
-}
-
-const HTTP_STATUS = {
-  OK: 200,
-  CREATED: 201,
-  BAD_REQUEST: 400,
-  UNAUTHORIZED: 401,
-  FORBIDDEN: 403,
-  NOT_FOUND: 404,
-  INTERNAL_SERVER_ERROR: 500,
-  SERVICE_UNAVAILABLE: 503,
-} as const;
-
-const getCurrentTimestamp = (): string => new Date().toISOString();
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const createLogger = (name: string) => console;
+import {
+  createLogger,
+  ApiResponse,
+  HTTP_STATUS,
+  getCurrentTimestamp,
+} from '@shopping-mall/shared';
 
 import {
   errorHandler,
   notFoundHandler,
   handleProcessExit,
-} from './middleware/errorHandler';
+} from '@middleware/errorHandler';
 
-import { authRoutes } from './routes/auth';
-
-// ========================================
-// 타입 정의
-// ========================================
-
-// Extend Express Request interface globally
-declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
-  namespace Express {
-    interface Request {
-      id: string;
-    }
-  }
-}
-
-// Error type guard for axios errors
-interface AxiosErrorResponse {
-  response?: {
-    data?: {
-      message?: string;
-    };
-    status?: number;
-  };
-  message?: string;
-}
-
-function isAxiosError(error: unknown): error is AxiosErrorResponse {
-  return typeof error === 'object' && error !== null;
-}
+import { authRoutes } from '@routes/auth';
 
 // ========================================
 // 앱 초기화
@@ -144,7 +95,7 @@ const limiter = rateLimit({
 app.use(limiter);
 
 // 요청 ID 추가 미들웨어
-app.use((req: Request, res: Response, next: NextFunction) => {
+app.use((req: any, res: Response, next: NextFunction) => {
   req.id = uuidv4();
   res.setHeader('X-Request-ID', req.id);
   next();
@@ -153,7 +104,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 // ========================================
 // 헬스체크 라우트
 // ========================================
-app.get('/health', (req: Request, res: Response) => {
+app.get('/health', (req: any, res: Response) => {
   const healthData = {
     status: 'healthy',
     uptime: process.uptime(),
@@ -172,7 +123,7 @@ app.get('/health', (req: Request, res: Response) => {
   res.status(HTTP_STATUS.OK).json(response);
 });
 
-app.get('/health/live', (req: Request, res: Response) => {
+app.get('/health/live', (req: any, res: Response) => {
   const response: ApiResponse = {
     success: true,
     data: {
@@ -188,7 +139,7 @@ app.get('/health/live', (req: Request, res: Response) => {
   res.status(HTTP_STATUS.OK).json(response);
 });
 
-app.get('/health/ready', (req: Request, res: Response) => {
+app.get('/health/ready', (req: any, res: Response) => {
   // 실제로는 데이터베이스, Redis 등의 연결 상태를 확인
   const checks = {
     memory: process.memoryUsage().heapUsed < 1024 * 1024 * 512, // 512MB 미만
@@ -220,462 +171,119 @@ const API_VERSION = '/api/v1';
 // 인증 관련 라우트
 app.use(`${API_VERSION}/auth`, authRoutes);
 
-// 디버깅: 등록된 라우트 확인
-if (process.env.NODE_ENV === 'development') {
-  console.log('🔍 [API Gateway] 등록된 라우트들:');
-  console.log('   📝 Auth 라우트:');
-  console.log('      - POST /api/v1/auth/login');
-  console.log('      - POST /api/v1/auth/register');
-  console.log('      - POST /api/v1/auth/pass-verification/request');
-  console.log('      - GET  /api/v1/auth/pass-verification/status/:sessionId');
-  console.log('      - POST /api/v1/auth/pass-verification/callback');
-  console.log('   👤 User 라우트:');
-  console.log('      - ALL  /api/v1/users/* (프록시 -> User Service)');
-  console.log('   🛒 Product 라우트:');
-  console.log('      - ALL  /api/v1/products/* (프록시 -> Product Service)');
-  console.log('   🛍️  Cart 라우트:');
-  console.log('      - ALL  /api/v1/cart/* (프록시 -> Cart Service)');
-  console.log('   📦 Order 라우트:');
-  console.log('      - ALL  /api/v1/orders/* (프록시 -> Order Service)');
-  console.log('   🏥 Health 라우트:');
-  console.log('      - GET  /health');
-  console.log('      - GET  /health/live');
-  console.log('      - GET  /health/ready');
-}
-
-// 사용자 라우트 (User Service로 프록시)
-app.use(`${API_VERSION}/users`, async (req: Request, res: Response) => {
-  try {
-    const userServiceUrl =
-      process.env.USER_SERVICE_URL || 'http://127.0.0.1:3002';
-
-    // Debug logging for user proxy requests
-    if (process.env.NODE_ENV === 'development') {
-      console.log(
-        `🔍 [API Gateway] User proxy request: ${req.method} ${req.url}`
-      );
-      console.log(
-        `🔍 [API Gateway] Target URL: ${userServiceUrl}/api/users${req.url}`
-      );
-    }
-
-    // 요청 헤더 복사 (인증 정보 등)
-    const headers = { ...req.headers };
-    delete headers.host; // host 헤더 제거
-
-    // Authorization 헤더가 있으면 전달 (JWT 토큰)
-    if (req.headers.authorization) {
-      headers.authorization = req.headers.authorization;
-    }
-
-    // User Service로 프록시
-    const proxyResponse = await axios({
-      method: req.method,
-      url: `${userServiceUrl}/api/users${req.url}`,
-      data: req.body,
-      headers,
-      timeout: 30000, // 30초 타임아웃 설정
-    });
-
-    if (process.env.NODE_ENV === 'development') {
-      console.log(
-        `✅ [API Gateway] User proxy success: ${proxyResponse.status}`
-      );
-    }
-
-    res.status(proxyResponse.status).json(proxyResponse.data);
-  } catch (error: unknown) {
-    // User Service 에러 상세 로깅
-    if (process.env.NODE_ENV === 'development') {
-      console.error(`❌ [API Gateway] User Service 에러:`, error);
-      if (isAxiosError(error) && error.response) {
-        console.error(`❌ [API Gateway] 응답 상태: ${error.response.status}`);
-        console.error(`❌ [API Gateway] 응답 데이터:`, error.response.data);
-      }
-    }
-
-    const response: ApiResponse = {
-      success: false,
-      data: null,
-      error:
-        (isAxiosError(error) && error.response?.data?.message) ||
-        (isAxiosError(error) && error.message) ||
-        'User Service 연결 실패',
-      timestamp: getCurrentTimestamp(),
-      requestId: req.id,
-    };
-    res
-      .status(
-        (isAxiosError(error) && error.response?.status) ||
-          HTTP_STATUS.INTERNAL_SERVER_ERROR
-      )
-      .json(response);
-  }
-});
-
-// 카테고리 라우트 (Product Service로 프록시)
-app.use(`${API_VERSION}/categories`, async (req: Request, res: Response) => {
-  try {
-    const productServiceUrl =
-      process.env.PRODUCT_SERVICE_URL || 'http://127.0.0.1:3003';
-
-    // 요청 헤더 복사
-    const headers = { ...req.headers };
-    delete headers.host; // host 헤더 제거
-
-    // Debug logging for category proxy requests
-    if (process.env.NODE_ENV === 'development') {
-      console.log(
-        `🔍 [API Gateway] Category proxy request: ${req.method} ${req.url}`
-      );
-      console.log(
-        `🔍 [API Gateway] Target URL: ${productServiceUrl}/api/v1/categories${req.url}`
-      );
-    }
-
-    // Product Service로 프록시
-    const proxyResponse = await axios({
-      method: req.method,
-      url: `${productServiceUrl}/api/v1/categories${req.url}`,
-      data: req.body,
-      headers,
-      timeout: 30000, // 30초 타임아웃 설정
-    });
-
-    if (process.env.NODE_ENV === 'development') {
-      console.log(
-        `✅ [API Gateway] Category proxy success: ${proxyResponse.status}`
-      );
-    }
-
-    res.status(proxyResponse.status).json(proxyResponse.data);
-  } catch (error: unknown) {
-    // Category Service 에러 상세 로깅
-    if (process.env.NODE_ENV === 'development') {
-      console.error(`❌ [API Gateway] Category Service 에러:`, error);
-      if (isAxiosError(error) && error.response) {
-        console.error(`❌ [API Gateway] 응답 상태: ${error.response.status}`);
-        console.error(`❌ [API Gateway] 응답 데이터:`, error.response.data);
-      }
-    }
-
-    const response: ApiResponse = {
-      success: false,
-      data: null,
-      error:
-        (isAxiosError(error) && error.response?.data?.message) ||
-        (isAxiosError(error) && error.message) ||
-        'Category Service 연결 실패',
-      timestamp: getCurrentTimestamp(),
-      requestId: req.id,
-    };
-    res
-      .status(
-        (isAxiosError(error) && error.response?.status) ||
-          HTTP_STATUS.INTERNAL_SERVER_ERROR
-      )
-      .json(response);
-  }
+// 사용자 라우트 (추후 User Service로 프록시)
+app.use(`${API_VERSION}/users`, (req: any, res: Response) => {
+  const response: ApiResponse = {
+    success: false,
+    data: null,
+    error: 'User Service는 아직 구현되지 않았습니다',
+    timestamp: getCurrentTimestamp(),
+    requestId: req.id,
+  };
+  res.status(HTTP_STATUS.NOT_FOUND).json(response);
 });
 
 // 상품 라우트 (Product Service로 프록시)
-app.use(`${API_VERSION}/products`, async (req: Request, res: Response) => {
+app.use(`${API_VERSION}/products`, async (req: any, res: Response) => {
   try {
     const productServiceUrl =
-      process.env.PRODUCT_SERVICE_URL || 'http://127.0.0.1:3003';
+      process.env.PRODUCT_SERVICE_URL || 'http://localhost:3003';
     // Use axios directly
 
     // 요청 헤더 복사
     const headers = { ...req.headers };
     delete headers.host; // host 헤더 제거
 
-    // Debug logging for product proxy requests
-    if (process.env.NODE_ENV === 'development') {
-      console.log(
-        `🔍 [API Gateway] Product proxy request: ${req.method} ${req.url}`
-      );
-      console.log(
-        `🔍 [API Gateway] Target URL: ${productServiceUrl}/api/v1/products${req.url}`
-      );
-    }
-
     // Product Service로 프록시
-    // Use the full request URL to avoid query parameter duplication
     const proxyResponse = await axios({
       method: req.method,
       url: `${productServiceUrl}/api/v1/products${req.url}`,
       data: req.body,
       headers,
-      timeout: 30000, // 30초 타임아웃 설정
-      // Don't use params since req.url already contains query parameters
+      params: req.query,
     });
 
-    if (process.env.NODE_ENV === 'development') {
-      console.log(
-        `✅ [API Gateway] Product proxy success: ${proxyResponse.status}`
-      );
-    }
-
     res.status(proxyResponse.status).json(proxyResponse.data);
-  } catch (error: unknown) {
-    // Product Service 에러 상세 로깅
-    if (process.env.NODE_ENV === 'development') {
-      console.error(`❌ [API Gateway] Product Service 에러:`, error);
-      if (isAxiosError(error) && error.response) {
-        console.error(`❌ [API Gateway] 응답 상태: ${error.response.status}`);
-        console.error(`❌ [API Gateway] 응답 데이터:`, error.response.data);
-      }
-    }
-
+  } catch (error: any) {
     const response: ApiResponse = {
       success: false,
       data: null,
       error:
-        (isAxiosError(error) && error.response?.data?.message) ||
-        (isAxiosError(error) && error.message) ||
+        error.response?.data?.message ||
+        error.message ||
         'Product Service 연결 실패',
       timestamp: getCurrentTimestamp(),
       requestId: req.id,
     };
     res
-      .status(
-        (isAxiosError(error) && error.response?.status) ||
-          HTTP_STATUS.INTERNAL_SERVER_ERROR
-      )
+      .status(error.response?.status || HTTP_STATUS.INTERNAL_SERVER_ERROR)
       .json(response);
   }
 });
 
 // 장바구니 라우트 (Cart Service로 프록시)
-app.use(`${API_VERSION}/cart`, async (req: Request, res: Response) => {
+app.use(`${API_VERSION}/cart`, async (req: any, res: Response) => {
   try {
     const cartServiceUrl =
-      process.env.CART_SERVICE_URL || 'http://127.0.0.1:3006';
-
-    // Debug logging for cart proxy requests
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`[DEBUG] Cart proxy request: ${req.method} ${req.url}`);
-      console.log(
-        `[DEBUG] Target URL: ${cartServiceUrl}/api/v1/cart${req.url}`
-      );
-    }
-
-    // 연결 테스트를 위한 간단한 헬스체크
-    try {
-      const healthCheck = await axios.get(`${cartServiceUrl}/health`, {
-        timeout: 5000,
-      });
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`[DEBUG] Cart service health check: ${healthCheck.status}`);
-      }
-    } catch (healthError: unknown) {
-      if (process.env.NODE_ENV === 'development') {
-        const error = healthError as Error;
-        console.error(
-          `[DEBUG] Cart service health check failed:`,
-          error.message
-        );
-      }
-    }
+      process.env.CART_SERVICE_URL || 'http://localhost:3006';
+    // Use axios directly
 
     // 요청 헤더 복사 (인증 정보, 세션 ID 등)
     const headers = { ...req.headers };
     delete headers.host; // host 헤더 제거
-
+    
     // X-Session-ID 헤더가 있으면 전달
     if (req.headers['x-session-id']) {
       headers['x-session-id'] = req.headers['x-session-id'];
     }
 
     // Cart Service로 프록시
-    // Use the full request URL to avoid query parameter duplication
     const proxyResponse = await axios({
       method: req.method,
       url: `${cartServiceUrl}/api/v1/cart${req.url}`,
       data: req.body,
       headers,
-      timeout: 30000, // 30초 타임아웃 설정
-      // Don't use params since req.url already contains query parameters
+      params: req.query,
     });
 
     // Set-Cookie 헤더 전달 (세션 관리를 위해 필수)
     if (proxyResponse.headers['set-cookie']) {
       // 쿠키의 도메인을 클라이언트 도메인으로 수정
-      const modifiedCookies = proxyResponse.headers['set-cookie'].map(
-        (cookie: string) => {
-          // 기존 도메인 제거하고 클라이언트가 접근할 수 있도록 수정
-          return cookie.replace(/Domain=[^;]+;?\s*/i, '');
-        }
-      );
+      const modifiedCookies = proxyResponse.headers['set-cookie'].map((cookie: string) => {
+        // 기존 도메인 제거하고 클라이언트가 접근할 수 있도록 수정
+        return cookie.replace(/Domain=[^;]+;?\s*/i, '');
+      });
       res.set('Set-Cookie', modifiedCookies);
     }
 
     res.status(proxyResponse.status).json(proxyResponse.data);
-  } catch (error: unknown) {
-    // Cart Service가 실행되지 않는 경우 빈 장바구니 응답 제공
-    // eslint-disable-next-line no-console
-    console.log('Cart service error:', error);
-
-    // Check for connection refused error (multiple ways it can appear)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const errorMessage = (error as any)?.message || '';
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const errorCode = (error as any)?.code || '';
-    const isConnectionError =
-      errorCode === 'ECONNREFUSED' ||
-      errorMessage.includes('ECONNREFUSED') ||
-      errorMessage.includes('connect ECONNREFUSED');
-
-    // eslint-disable-next-line no-console
-    console.log('Error details:', {
-      errorMessage,
-      errorCode,
-      isConnectionError,
-      method: req.method,
-    });
-
-    if (isConnectionError && req.method === 'GET') {
-      // eslint-disable-next-line no-console
-      console.log('Returning cart fallback response');
-      const response: ApiResponse = {
-        success: true,
-        data: {
-          items: [],
-          totalItems: 0,
-          totalPrice: 0,
-          sessionId: null,
-        },
-        message: 'Cart Service is not available. Showing empty cart.',
-        timestamp: getCurrentTimestamp(),
-        requestId: req.id,
-      };
-      return res.status(HTTP_STATUS.OK).json(response);
-    }
-
+  } catch (error: any) {
     const response: ApiResponse = {
       success: false,
       data: null,
       error:
-        (isAxiosError(error) && error.response?.data?.message) ||
-        (isAxiosError(error) && error.message) ||
+        error.response?.data?.message ||
+        error.message ||
         'Cart Service 연결 실패',
       timestamp: getCurrentTimestamp(),
       requestId: req.id,
     };
     res
-      .status(
-        (isAxiosError(error) && error.response?.status) ||
-          HTTP_STATUS.INTERNAL_SERVER_ERROR
-      )
+      .status(error.response?.status || HTTP_STATUS.INTERNAL_SERVER_ERROR)
       .json(response);
   }
 });
 
-// 주문 라우트 (Order Service로 프록시)
-app.use(`${API_VERSION}/orders`, async (req: Request, res: Response) => {
-  try {
-    const orderServiceUrl =
-      process.env.ORDER_SERVICE_URL || 'http://127.0.0.1:3004';
-
-    // Debug logging for order proxy requests
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`[DEBUG] Order proxy request: ${req.method} ${req.url}`);
-      console.log(
-        `[DEBUG] Target URL: ${orderServiceUrl}/api/orders${req.url}`
-      );
-    }
-
-    // 연결 테스트를 위한 간단한 헬스체크
-    try {
-      const healthCheck = await axios.get(`${orderServiceUrl}/health`, {
-        timeout: 5000,
-      });
-      if (process.env.NODE_ENV === 'development') {
-        console.log(
-          `[DEBUG] Order service health check: ${healthCheck.status}`
-        );
-      }
-    } catch (healthError: unknown) {
-      if (process.env.NODE_ENV === 'development') {
-        const error = healthError as Error;
-        console.error(
-          `[DEBUG] Order service health check failed:`,
-          error.message
-        );
-      }
-    }
-
-    // 요청 헤더 복사 (인증 정보, Authorization 등)
-    const headers = { ...req.headers };
-    delete headers.host; // host 헤더 제거
-
-    // Authorization 헤더가 있으면 전달 (JWT 토큰)
-    if (req.headers.authorization) {
-      headers.authorization = req.headers.authorization;
-    }
-
-    // Order Service로 프록시
-    // Order Service는 /api/orders 경로를 사용하므로 API_VERSION을 제거
-    const proxyResponse = await axios({
-      method: req.method,
-      url: `${orderServiceUrl}/api/orders${req.url}`,
-      data: req.body,
-      headers,
-      timeout: 30000, // 30초 타임아웃 설정
-    });
-
-    res.status(proxyResponse.status).json(proxyResponse.data);
-  } catch (error: unknown) {
-    // Order Service가 실행되지 않는 경우 에러 응답
-    console.log('Order service error:', error);
-
-    // Check for connection refused error
-    const errorMessage = error instanceof Error ? error.message : '';
-    const errorCode =
-      typeof error === 'object' && error !== null && 'code' in error
-        ? (error as { code: string }).code
-        : '';
-    const isConnectionError =
-      errorCode === 'ECONNREFUSED' ||
-      errorMessage.includes('ECONNREFUSED') ||
-      errorMessage.includes('connect ECONNREFUSED');
-
-    console.log('Order service error details:', {
-      errorMessage,
-      errorCode,
-      isConnectionError,
-      method: req.method,
-    });
-
-    if (isConnectionError) {
-      const response: ApiResponse = {
-        success: false,
-        data: null,
-        error:
-          'Order Service가 현재 사용할 수 없습니다. 잠시 후 다시 시도해주세요.',
-        timestamp: getCurrentTimestamp(),
-        requestId: req.id,
-      };
-      return res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json(response);
-    }
-
-    const response: ApiResponse = {
-      success: false,
-      data: null,
-      error:
-        (isAxiosError(error) && error.response?.data?.message) ||
-        (isAxiosError(error) && error.message) ||
-        'Order Service 연결 실패',
-      timestamp: getCurrentTimestamp(),
-      requestId: req.id,
-    };
-    res
-      .status(
-        (isAxiosError(error) && error.response?.status) ||
-          HTTP_STATUS.INTERNAL_SERVER_ERROR
-      )
-      .json(response);
-  }
+// 주문 라우트 (추후 Order Service로 프록시)
+app.use(`${API_VERSION}/orders`, (req: any, res: Response) => {
+  const response: ApiResponse = {
+    success: false,
+    data: null,
+    error: 'Order Service는 아직 구현되지 않았습니다',
+    timestamp: getCurrentTimestamp(),
+    requestId: req.id,
+  };
+  res.status(HTTP_STATUS.NOT_FOUND).json(response);
 });
 
 // ========================================

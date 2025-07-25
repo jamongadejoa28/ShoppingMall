@@ -1,0 +1,142 @@
+# ========================================
+# Docker Compose for Integration Testing (수정됨)
+# cart-service/docker-compose.test.yml
+# ========================================
+
+# 🔧 수정: version 속성 제거 (Docker Compose v3.8+ 에서 obsolete)
+
+services:
+  # ========================================
+  # PostgreSQL 테스트 데이터베이스
+  # ========================================
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: cart-service-postgres-test
+    environment:
+      POSTGRES_DB: cart_service_test
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5433:5432" # 기본 5432와 충돌 방지
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      # 🔧 수정: init 스크립트는 선택사항으로 변경 (파일이 없어도 실행 가능)
+      # - ./src/__tests__/fixtures/init-test-db.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user -d cart_service_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    command: postgres -c log_statement=all -c log_destination=stderr
+
+  # ========================================
+  # Redis 테스트 캐시
+  # ========================================
+  redis-test:
+    image: redis:7-alpine
+    container_name: cart-service-redis-test
+    ports:
+      - "6380:6379" # 기본 6379와 충돌 방지
+    volumes:
+      - redis_test_data:/data
+      # 🔧 수정: 설정 파일도 선택사항으로 변경
+      # - ./src/__tests__/fixtures/redis-test.conf:/usr/local/etc/redis/redis.conf
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    # 🔧 수정: 기본 Redis 설정으로 실행 (별도 설정 파일 불필요)
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+  # ========================================
+  # Cart Service 테스트 컨테이너 (선택적) - 현재는 사용하지 않음
+  # ========================================
+  cart-service-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: cart-service-app-test
+    environment:
+      # 데이터베이스 설정
+      DATABASE_HOST: postgres-test
+      DATABASE_PORT: 5432
+      DATABASE_NAME: cart_service_test
+      DATABASE_USER: test_user
+      DATABASE_PASSWORD: test_password
+
+      # Redis 설정
+      REDIS_HOST: redis-test
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      REDIS_DB: 0
+      REDIS_KEY_PREFIX: "cart-service-test:"
+
+      # 캐시 설정
+      CACHE_DEFAULT_TTL: 60
+      CACHE_CART_TTL: 300
+      CACHE_USER_CART_TTL: 600
+
+      # 애플리케이션 설정
+      NODE_ENV: test
+      PORT: 3001
+      SERVICE_VERSION: 1.0.0-test
+
+      # 로깅 설정
+      LOG_LEVEL: debug
+
+      # 테스트 모드 플래그
+      TEST_MODE: true
+    ports:
+      - "3001:3001"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+    networks:
+      - test-network
+    profiles:
+      - full-test # docker-compose --profile full-test up
+
+# ========================================
+# 네트워크 및 볼륨 설정
+# ========================================
+networks:
+  test-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  postgres_test_data:
+    driver: local
+  redis_test_data:
+    driver: local
+# ========================================
+# 사용법 예시:
+#
+# 1. 기본 테스트 환경 (DB + Redis만) - 권장
+#    docker-compose -f docker-compose.test.yml up -d postgres-test redis-test
+#
+# 2. 서비스 상태 확인
+#    docker-compose -f docker-compose.test.yml ps
+#
+# 3. 로그 확인
+#    docker-compose -f docker-compose.test.yml logs -f
+#
+# 4. 테스트 완료 후 정리
+#    docker-compose -f docker-compose.test.yml down -v
+#
+# 5. 헬스체크 확인
+#    docker-compose -f docker-compose.test.yml ps
+# ========================================

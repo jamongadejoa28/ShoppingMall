@@ -24,7 +24,6 @@ import {
 
 // ===== Routes =====
 import { createUserRoutes } from './frameworks/routes/userRoutes';
-import phoneVerificationRoutes from './frameworks/presentation/routes/phoneVerificationRoutes';
 
 // ===== Middleware =====
 import {
@@ -199,23 +198,9 @@ export class UserServiceServer {
     // 사용자 라우트
     const userRoutes = createUserRoutes(
       this.container.userController,
-      this.container.tokenService,
-      this.container.userRepository
+      this.container.tokenService
     );
     this.app.use('/api/users', userRoutes);
-
-    // 휴대폰 인증 라우트
-    this.app.use('/api/users/phone-verification', phoneVerificationRoutes);
-
-    // 디버깅: 휴대폰 인증 라우트 상태 확인
-    if (process.env.NODE_ENV === 'development') {
-      console.log('📱 [User Service] 휴대폰 인증 라우트들:');
-      console.log('   - POST /api/users/phone-verification/request');
-      console.log('   - GET  /api/users/phone-verification/status/:sessionId');
-      console.log('   - POST /api/users/phone-verification/complete/:sessionId');
-      console.log('   - GET  /api/users/phone-verification/health');
-      console.log('   - GET  /api/users/phone-verification/stats');
-    }
 
     console.log('✅ 라우트 구성 완료');
   }

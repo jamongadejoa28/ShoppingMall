@@ -17,53 +17,30 @@ module.exports = {
         },
       },
       fontFamily: {
-        sans: [
-          'Pretendard',
-          '-apple-system',
-          'BlinkMacSystemFont',
-          'system-ui',
-          'Roboto',
-          'Helvetica Neue',
-          'Segoe UI',
-          'Apple SD Gothic Neo',
-          'Noto Sans KR',
-          'Malgun Gothic',
-          'Apple Color Emoji',
-          'Segoe UI Emoji',
-          'Segoe UI Symbol',
-          'sans-serif'
-        ],
-      },
-      keyframes: {
-        blob: {
-          '0%': {
-            transform: 'translate(0px, 0px) scale(1)',
-          },
-          '33%': {
-            transform: 'translate(30px, -50px) scale(1.1)',
-          },
-          '66%': {
-            transform: 'translate(-20px, 20px) scale(0.9)',
-          },
-          '100%': {
-            transform: 'translate(0px, 0px) scale(1)',
-          },
-        },
-        float: {
-          '0%, 100%': {
-            transform: 'translateY(0px)',
-          },
-          '50%': {
-            transform: 'translateY(-20px)',
-          },
-        },
-      },
-      animation: {
-        blob: 'blob 7s infinite',
-        'blob-slow': 'blob 10s infinite',
-        float: 'float 6s ease-in-out infinite',
+        sans: ['Inter', 'sans-serif'],
       },
     },
   },
-  plugins: [],
+  extends: ['react-app', 'react-app/jest', 'prettier'],
+  plugins: ['prettier'],
+  rules: {
+    'prettier/prettier': [
+      'error',
+      {
+        endOfLine: 'auto',
+      },
+    ],
+    '@typescript-eslint/no-unused-vars': 'error',
+    'react-hooks/exhaustive-deps': 'warn',
+    'no-console': 'off',
+    'prefer-const': 'error',
+  },
+  overrides: [
+    {
+      files: ['**/*.test.{ts,tsx}'],
+      rules: {
+        'no-console': 'off',
+      },
+    },
+  ],
 };
